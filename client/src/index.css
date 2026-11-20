@@ -16,7 +16,8 @@
 }
 
 /*
- * A popup's own HUD unit: the usual one, shrunk when the room left between the ads is
+ * A popup's own HUD unit: 85% of the usual one (popups stay compact, leaving the game and
+ * the ads room round them), shrunk further when the room left between the ads is
  * narrower than the panel (its --panel-w reference px plus the close button's overhang)
  * or much shorter than a typical panel (taller ones scroll), so the whole popup scales
  * down and stays in the safe zone.
@@ -25,7 +26,7 @@
   --px: max(
     0.25px,
     min(
-      clamp(0.3px, min(100vw / 1920, 100vh / 1080), 1.4px),
+      0.85 * clamp(0.3px, min(100vw / 1920, 100vh / 1080), 1.4px),
       (100vw - 2 * var(--ad-x) - 24px) / (var(--panel-w) + 90),
       (100vh - var(--ad-top) - var(--ad-bottom) - 24px) / 760
     )
@@ -87,7 +88,7 @@ body.pp-spinning .touch-jump {
     --px: max(
       0.25px,
       min(
-        clamp(0.3px, min(100vw / 1000, 100vh / 1900), 1.4px),
+        0.85 * clamp(0.3px, min(100vw / 1000, 100vh / 1900), 1.4px),
         (100vw - 2 * var(--ad-x) - 24px) / (var(--panel-w) + 90),
         (100vh - var(--ad-top) - var(--ad-bottom) - 24px) / 760
       )

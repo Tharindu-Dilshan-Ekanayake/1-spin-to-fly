@@ -74,26 +74,30 @@ export const WALKABLE = [PLAZA]
 // --- Training pads ------------------------------------------------------------------
 
 /**
- * The training benches fill the east wing in three columns, each a raised round mat (the
- * pad: standing on it is training, facing east) with its bench on it and its rack and
- * multiplier backboard just beyond to the east. The middle column is staggered half a row
- * north of the other two, so nobody's backboard ever stands between a trainee and the
- * camera behind them, and the lanes between the rows lead straight onto every mat.
- * Pads count up in rows away from the spawn, west to east: the free one is nearest.
+ * The training benches stand in two straight columns on the east wing, every one facing
+ * west, towards the red carpet that runs from the lobby up to the stage. Each column
+ * counts from right to left as you look at it from the carpet (south to north, from the
+ * leaderboards up towards the eggs): five benches in the column by the carpet, four in the
+ * one behind. Each is a raised square podium (the pad: standing on it is training) with a
+ * weight bench across it and a dumbbell rack at each end, and its multiplier label floating
+ * above. Nothing stands round a podium (only the locked ones are walled off), so you walk
+ * straight onto any of them from the carpet.
  */
-/** Seven benches, then Shipwreck Cove's two at the far (north) end. */
+/** Seven benches, then Shipwreck Cove's two at the far end of the back column. */
 export const PAD_COUNT = 9
 /** Radius of a pad's top: standing within it is training. */
 export const PAD_RADIUS = 2.7
 /** The pads' tops, a step up from the plaza. */
 export const PAD_HEIGHT = 0.5
-/** The three columns' centre lines, the rows' z, and the middle column's stagger. */
-const PAD_COLUMNS = [14, 28, 42]
-const PAD_ROWS = [26, 14, 2]
-const PAD_STAGGER = -6
+/** Each column's x, and the benches' z along it, right to left (south to north), 8 m apart. */
+const PAD_COLUMNS = [
+  { x: 17, zs: [26, 18, 10, 2, -6] },
+  { x: 43, zs: [26, 18, 10, 2] },
+]
+const PAD_SPOTS = PAD_COLUMNS.flatMap((column) => column.zs.map((z) => ({ x: column.x, z })))
 
-export const padCenterX = (index) => PAD_COLUMNS[index % 3]
-export const padCenterZ = (index) => PAD_ROWS[Math.floor(index / 3)] + (index % 3 === 1 ? PAD_STAGGER : 0)
+export const padCenterX = (index) => PAD_SPOTS[index].x
+export const padCenterZ = (index) => PAD_SPOTS[index].z
 
 /**
  * Each pull-up bar is higher than the last: the first hangs just over your head, the best
@@ -101,35 +105,35 @@ export const padCenterZ = (index) => PAD_ROWS[Math.floor(index / 3)] + (index % 
  */
 export const padBarHeight = (index) => 2.6 + 0.62 * Math.max(0, index)
 
-/**
- * Each pad's console area, on the ground east of it: these constants (named for the
- * template's table, kept so the server's colliders and saves don't change) bound the
- * solid block of console, handrails and backboard drawn there. Training, you face it (east)
- * and run.
- */
-export const TABLE_LENGTH = 4.2
-export const TABLE_WIDTH = 2.4
-export const TABLE_HEIGHT = 1.05
-/**
- * East of each pad's centre: the solid block's near (west) end, its middle, and its far end
- * beyond the backboard.
- */
-export const TABLE_NEAR_DX = PAD_RADIUS + 0.05
-export const TABLE_DX = TABLE_NEAR_DX + TABLE_LENGTH / 2
-export const ROBOT_DX = TABLE_NEAR_DX + TABLE_LENGTH + 0.6
-/** Each pad's gym floor: it runs back to a low barrier behind the backboard, this wide either side. */
-export const COURT_BACK_DX = ROBOT_DX + 1.5
-export const COURT_HALF = 3.1
-/** Facing the treadmill's console: east. (Yaw 0 faces +Z, south.) */
-export const PAD_YAW = Math.PI / 2
+/** Which way trainees face: west, towards the carpet (yaw 0 faces +Z, south; PI/2 east). */
+export const PAD_YAW = -Math.PI / 2
+/** That way as a unit vector on the ground, and the trainee's right hand. */
+const AHEAD = { x: Math.round(Math.sin(PAD_YAW)), z: Math.round(Math.cos(PAD_YAW)) }
+const RIGHT = { x: -AHEAD.z, z: AHEAD.x }
 
 /**
- * The training bench on each pad runs across the mat (along Z), long enough for several
- * players to sit side by side: you sit where you stand along it, no further than
- * BENCH_HALF from the pad's middle.
+ * A point `ahead` metres in front of pad `index`'s centre (the way its trainees face) and
+ * `right` metres to their right, in world x/z. The stations are built in this frame.
+ */
+export const padPoint = (index, ahead, right = 0) => ({
+  x: padCenterX(index) + AHEAD.x * ahead + RIGHT.x * right,
+  z: padCenterZ(index) + AHEAD.z * ahead + RIGHT.z * right,
+})
+
+/**
+ * The training bench on each pad runs across the mat (left to right of the trainee), long
+ * enough for several players to sit side by side: you sit where you stand along it, no
+ * further than BENCH_HALF from the pad's middle. Writes the seat's x/z into `out`.
  */
 export const BENCH_HALF = 1.9
-export const benchSeatZ = (index, z) => Math.min(padCenterZ(index) + BENCH_HALF, Math.max(padCenterZ(index) - BENCH_HALF, z))
+export function benchSeat(index, x, z, out = { x: 0, z: 0 }) {
+  const cx = padCenterX(index)
+  const cz = padCenterZ(index)
+  const along = Math.min(BENCH_HALF, Math.max(-BENCH_HALF, (x - cx) * RIGHT.x + (z - cz) * RIGHT.z))
+  out.x = cx + RIGHT.x * along
+  out.z = cz + RIGHT.z * along
+  return out
+}
 
 /** The square round pad `index`: its raised deck (walkable, and a wall while locked). */
 export function padRect(index) {
@@ -245,14 +249,6 @@ export const STATIC_COLLIDERS = [
   box(SPHINX_STAND.x, SPHINX_STAND.z, 3, 3),
   ...LEADERBOARDS.map((b) => box(b.x, b.z, 4.6, 0.5)),
   box(FREE_REWARD.x, FREE_REWARD.z, 1.4, 1.4),
-  // Each station's rack-and-backboard block, and the barrier across its gym floor's back.
-  ...Array.from({ length: PAD_COUNT }, (_, i) => ({
-    minX: padCenterX(i) + TABLE_NEAR_DX,
-    maxX: padCenterX(i) + ROBOT_DX + 0.7,
-    minZ: padCenterZ(i) - TABLE_WIDTH / 2,
-    maxZ: padCenterZ(i) + TABLE_WIDTH / 2,
-  })),
-  ...Array.from({ length: PAD_COUNT }, (_, i) => box(padCenterX(i) + COURT_BACK_DX, padCenterZ(i), 0.15, COURT_HALF)),
   // Each portal ring's base; the swirl itself is walk-through.
   ...PORTALS.flatMap((p) => [box(p.x - p.radius, p.z, 0.6, 0.8), box(p.x + p.radius, p.z, 0.6, 0.8)]),
   // The spin bar's two posts (the bar itself is overhead).

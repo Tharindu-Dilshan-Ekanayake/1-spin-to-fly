@@ -85,7 +85,7 @@ export function footballNumbers() {
  */
 export const DIRECTIONS = [
   { text: 'SPIN BAR', arrow: 'up', x: 0, z: SPAWN.z - 13, width: 8, yaw: 0 },
-  { text: 'TRAIN', arrow: 'right', x: 9, z: SPAWN.z - 8.4, width: 6, yaw: 0 },
+  { text: 'TRAIN', arrow: 'right', x: 9, z: SPAWN.z - 12, width: 6, yaw: 0 },
   { text: 'ARMS', arrow: 'left', x: -9.6, z: SPAWN.z - 12, width: 5.5, yaw: 0 },
   { text: 'PETS', arrow: 'right', x: 9, z: SPAWN.z - 28, width: 5.5, yaw: 0 },
 ]

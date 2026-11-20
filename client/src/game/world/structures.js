@@ -1,18 +1,16 @@
-import { CylinderGeometry, SphereGeometry, TorusGeometry } from 'three'
+import { CylinderGeometry, Matrix4 } from 'three'
 
 import {
   BENCH_HALF,
-  COURT_BACK_DX,
-  COURT_HALF,
   PAD_COUNT,
   PAD_HEIGHT,
   PAD_RADIUS,
+  PAD_YAW,
   padCenterX,
   padCenterZ,
   SHOP_SIGN,
   SHOP_SIGN_FACING,
   SHOP_STAGES,
-  TABLE_NEAR_DX,
 } from '@shared/world'
 
 import { STYLE } from '../materials'
@@ -42,40 +40,10 @@ export const PAD_THEMES = [
   { base: '#0b4f8a', top: '#1a8fd8', ring: '#7ff6ff', emblem: '#ffffff', rail: '#0a6fb8', court: '#0b3f72', screen: '#7ff6ff', text: '#7ff6ff', style: STYLE.GLOW, beach: true },
 ]
 
-const LINE = '#f4f7fb'
 const LEG = '#3a3f4a'
 const STEEL = '#c9d2de'
-/** The multiplier backboard: high above the bar, and compact. Labels centre on it (lobbyLabels). */
-export const BOARD_BOTTOM = 4.8
-export const BOARD_HEIGHT = 3.6
-
 const DISC = new CylinderGeometry(1, 1, 1, 24)
-const RING = new TorusGeometry(1, 0.08, 4, 28)
 const CYL = new CylinderGeometry(1, 1, 1, 12)
-const BALL = new SphereGeometry(1, 12, 8)
-
-/**
- * A bar's gym floor, east of its mat: a coloured floor with white lines and a low barrier
- * at the back. Boxes go in `blocks`: no draw calls of their own. (The bar itself stands
- * over the mat: buildPullUpBar.)
- */
-function buildCourt(blocks, px, z, theme) {
-  const COURT_BACK_X = px + COURT_BACK_DX
-  const TABLE_NEAR_X = px + TABLE_NEAR_DX
-  const courtLength = COURT_BACK_X - (TABLE_NEAR_X - 0.4)
-  const courtX = (TABLE_NEAR_X - 0.4 + COURT_BACK_X) / 2
-  blocks.addOn(courtX, 0, z, courtLength, 0.05, COURT_HALF * 2, theme.court, STYLE.SMOOTH)
-  // Its lines stand 4 cm proud of the floor (nothing within 3 cm of another surface).
-  for (const s of [-1, 1]) blocks.addOn(courtX, 0.05, z + s * (COURT_HALF - 0.15), courtLength - 0.3, 0.04, 0.12, LINE, STYLE.SMOOTH)
-  blocks.addOn(COURT_BACK_X - 0.3, 0.05, z, 0.12, 0.04, COURT_HALF * 2 - 0.42, LINE, STYLE.SMOOTH)
-
-  // The barrier across the back: panels in two colours with a glowing top.
-  for (let i = 0; i < 3; i += 1) {
-    const pz = z - COURT_HALF + (i + 0.5) * ((COURT_HALF * 2) / 3)
-    blocks.addOn(COURT_BACK_X, 0, pz, 0.22, 0.75, (COURT_HALF * 2) / 3 - 0.06, i % 2 ? theme.top : '#1f2a5c', STYLE.SMOOTH)
-  }
-  blocks.addOn(COURT_BACK_X, 0.75, z, 0.26, 0.08, COURT_HALF * 2, theme.ring, STYLE.GLOW)
-}
 
 /** How high the bench's seat is over the mat (the trainee's pose sits on it: playerPose.benchPress). */
 export const SEAT_HEIGHT = 0.45
@@ -89,14 +57,10 @@ function addDumbbell(props, x, y, z, color, size = 1) {
 }
 
 /**
- * The training station on the mat: a long padded weight bench across it in the pad's
+ * The training station on the podium: a long padded weight bench across it in the pad's
  * colours, where several players sit side by side (each where they stood: world.js
- * benchSeatZ) facing east, pressing dumbbells overhead, with a dumbbell rack at each end; then east of the mat a second bench and a rack of
- * dumbbells and, behind them, the big backboard the pad's multiplier label
- * (labels/lobbyLabels.js) hangs in front of. The bench is scenery: you walk through it.
- *
- * Everything east of x = px + TABLE_NEAR_DX stays inside the pad's static collider
- * (shared/world.js), so what you can't walk through is what's drawn.
+ * benchSeat) pressing dumbbells overhead, with a dumbbell rack at each end. The bench is
+ * scenery: you walk through it.
  */
 function buildBench(blocks, props, px, z, theme) {
   const top = PAD_HEIGHT
@@ -121,64 +85,77 @@ function buildBench(blocks, props, px, z, theme) {
   }
 }
 
-/** The rest of the station, east of the mat. */
-function buildStationBack(blocks, props, px, z, theme) {
-  // East of the mat: a weights bench and a rack of dumbbells, in the bar's colours.
-  const cx = px + 3.4
-  blocks.addOn(cx - 0.6, 0, z, 1.0, 0.42, 1.9, LEG, STYLE.SMOOTH)
-  blocks.addOn(cx - 0.6, 0.42, z, 1.1, 0.16, 2.0, theme.rail, STYLE.SMOOTH)
-  blocks.addOn(cx + 0.7, 0, z, 0.7, 1.05, 2.0, '#2a2f3a', STYLE.SMOOTH)
-  blocks.addOn(cx + 0.7, 1.05, z, 0.8, 0.06, 2.1, theme.ring, STYLE.GLOW)
-  for (let i = 0; i < 3; i += 1) addDumbbell(props, cx + 0.7, 0.35 + i * 0.32, z + (i - 1) * 0.2, i === 1 ? theme.top : '#2a2f3a', 0.85 + i * 0.12)
-  addDumbbell(props, cx - 0.6, 0.78, z, theme.screen, 1)
+/**
+ * The stations are written facing east (yaw PI/2: +X ahead, the bench along Z); this turns
+ * them about their pad's centre to face PAD_YAW. Blocks go through a proxy that moves each
+ * box and adds the turn to its yaw; props through the builder's transform.
+ */
+const STATION_TURN = PAD_YAW - Math.PI / 2
+const _turn = new Matrix4()
+const _move = new Matrix4()
 
-  // The backboard behind it, kept small and high so the follow camera behind the trainee
-  // (west of the mat, looking east) sees it over their head rather than a wall of it: a
-  // navy panel in a rail-coloured frame with a glowing border in the bar's ring colour,
-  // on two thin posts, a gold dumbbell on top.
-  const bx = px + 5.6
-  const by = BOARD_BOTTOM
-  const bh = BOARD_HEIGHT
-  for (const s of [-1, 1]) blocks.addOn(bx, 0, z + s * 1.5, 0.25, by, 0.25, LEG, STYLE.SMOOTH)
-  blocks.addOn(bx, by, z, 0.4, bh, 4.2, theme.rail, STYLE.SMOOTH)
-  blocks.addOn(bx - 0.23, by + 0.2, z, 0.08, bh - 0.4, 3.8, '#141a3a', STYLE.SMOOTH)
-  blocks.addOn(bx - 0.28, by + 0.12, z, 0.06, 0.1, 3.9, theme.ring, STYLE.GLOW)
-  blocks.addOn(bx - 0.28, by + bh - 0.22, z, 0.06, 0.1, 3.9, theme.ring, STYLE.GLOW)
-  for (const s of [-1, 1]) blocks.addOn(bx - 0.28, by + 0.2, z + s * 1.9, 0.06, bh - 0.4, 0.1, theme.ring, STYLE.GLOW)
-  if (theme.beach) {
-    // A surfboard standing on end on top, and a little palm beside it.
-    props.add(BALL, { position: [bx, by + bh + 1.0, z - 0.7], scale: [0.14, 0.95, 0.34], color: theme.ring })
-    props.add(BALL, { position: [bx, by + bh + 1.0, z - 0.7], scale: [0.15, 0.8, 0.07], color: '#ffffff' })
-    blocks.addOn(bx, by + bh, z + 0.9, 0.22, 1.5, 0.22, '#9a6a3a', STYLE.SMOOTH)
-    blocks.add(bx, by + bh + 1.62, z + 0.9, 1.6, 0.18, 0.5, '#2fae4a', STYLE.SMOOTH, 0.4)
-    blocks.add(bx, by + bh + 1.66, z + 0.9, 0.5, 0.16, 1.6, '#4cd36a', STYLE.SMOOTH, 0.4)
-  } else {
-    addDumbbell(props, bx, by + bh + 0.45, z, '#ffd21f', 1.6)
+function turnedBlocks(blocks, cx, cz, turn) {
+  const c = Math.cos(turn)
+  const s = Math.sin(turn)
+  const proxy = {
+    add(x, y, z, sx, sy, sz, color, style, rotY = 0, rotX = 0, rotZ = 0) {
+      const dx = x - cx
+      const dz = z - cz
+      blocks.add(cx + dx * c + dz * s, y, cz - dx * s + dz * c, sx, sy, sz, color, style, rotY + turn, rotX, rotZ)
+      return proxy
+    },
+    addOn(x, base, z, sx, sy, sz, color, style, rotY = 0) {
+      return proxy.add(x, base + sy / 2, z, sx, sy, sz, color, style, rotY)
+    },
+  }
+  return proxy
+}
+
+function stationTransform(cx, cz, turn) {
+  return _turn
+    .makeTranslation(cx, 0, cz)
+    .multiply(_move.makeRotationY(turn))
+    .multiply(new Matrix4().makeTranslation(-cx, 0, -cz))
+}
+
+/** Half the podium's size: its deck is the walkable square of world.js padRect. */
+const DECK_HALF = PAD_RADIUS + 0.3
+
+/**
+ * A training podium: a wide base in the pad's dark colour, a slab on it in its bright
+ * colour with a glowing frame set in the top, and two glowing emblem discs either side of
+ * where you sit. Boxes go in `blocks`, the discs in `props`: no draw calls of their own.
+ */
+function buildPodium(blocks, props, px, z, theme) {
+  const size = DECK_HALF * 2
+  const slab = size - 0.6
+  blocks.addOn(px, 0, z, size, PAD_HEIGHT - 0.14, size, theme.base, STYLE.SMOOTH)
+  blocks.addOn(px, PAD_HEIGHT - 0.14, z, slab, 0.14, slab, theme.top, theme.style ?? STYLE.STUDS)
+  // The glowing frame: 3 cm proud of the slab, the strips meeting without overlapping.
+  const inner = slab / 2 - 0.3
+  for (const s of [-1, 1]) {
+    blocks.addOn(px + s * inner, PAD_HEIGHT, z, 0.14, 0.03, inner * 2 + 0.14, theme.ring, STYLE.GLOW)
+    blocks.addOn(px, PAD_HEIGHT, z + s * inner, inner * 2 - 0.14, 0.03, 0.14, theme.ring, STYLE.GLOW)
+  }
+  for (const s of [-1, 1]) {
+    props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.03, z + s * 1.6], scale: [0.46, 0.04, 0.46], color: theme.emblem === '#1d1f22' ? '#ffffff' : theme.emblem })
+    props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.08, z + s * 1.6], scale: [0.26, 0.04, 0.26], color: theme.ring, style: STYLE.GLOW })
   }
 }
 
 /**
- * The training spots: round two-tier mats in the pad's colours with a glowing ring round
- * the top, each with its weight bench on it and a gym floor beyond. The rounded parts go
- * into the world's props, the rest into its blocks: no draw calls of their own.
+ * The training spots: a square podium in the pad's colours with its weight bench on it.
  */
-export function buildPads(blocks, props) {
+export function buildPads(world, props) {
   for (let i = 0; i < PAD_COUNT; i += 1) {
     const theme = PAD_THEMES[i]
     const px = padCenterX(i)
     const z = padCenterZ(i)
-    const r = PAD_RADIUS
-    props.add(DISC, { position: [px, PAD_HEIGHT * 0.4, z], scale: [r + 0.45, PAD_HEIGHT * 0.8, r + 0.45], color: theme.base })
-    props.add(DISC, { position: [px, PAD_HEIGHT - 0.06, z], scale: [r, 0.14, r], color: theme.top, style: theme.style ?? STYLE.STUDS })
-    props.add(RING, { position: [px, PAD_HEIGHT + 0.02, z], rotation: [Math.PI / 2, 0, 0], scale: [r - 0.25, r - 0.25, 1], color: theme.ring, style: STYLE.GLOW })
-    // The mat's emblem: a glowing disc either side of where you stand.
-    for (const s of [-1, 1]) {
-      props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.03, z + s * 1.6], scale: [0.46, 0.04, 0.46], color: theme.emblem === '#1d1f22' ? '#ffffff' : theme.emblem })
-      props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.08, z + s * 1.6], scale: [0.26, 0.04, 0.26], color: theme.ring, style: STYLE.GLOW })
-    }
+    const blocks = turnedBlocks(world, px, z, STATION_TURN)
+    props.transform = stationTransform(px, z, STATION_TURN)
+    buildPodium(blocks, props, px, z, theme)
     buildBench(blocks, props, px, z, theme)
-    buildStationBack(blocks, props, px, z, theme)
-    buildCourt(blocks, px, z, theme)
+    props.transform = null
   }
 }
 

@@ -6,7 +6,9 @@
  * the largest slot the portal can put in each place for this viewport (sizes from the
  * SDK: 300x250 / 300x600 / 160x600 at the sides, 728x90 / 320x50 / 320x100 at the bottom)
  * as CSS variables on the root - --ad-x (each side), --ad-bottom, --ad-top - and Panel.jsx
- * keeps every popup inside what's left, scaled down to fit. Zero when no ads are showing.
+ * keeps every popup inside what's left, scaled down to fit. The bottom banner's strip is
+ * kept free all the time (the banner can arrive a moment after a popup opens, and a popup
+ * should never jump); the sides only while the ads are up.
  */
 
 /** Gap kept between an ad and the popup. */
@@ -28,7 +30,8 @@ function insetsFor(width, height) {
 
 function apply() {
   const root = document.documentElement.style
-  const inset = active || forced ? insetsFor(window.innerWidth, window.innerHeight) : { x: 0, bottom: 0, top: 0 }
+  const full = insetsFor(window.innerWidth, window.innerHeight)
+  const inset = active || forced ? full : { x: 0, bottom: full.bottom, top: 0 }
   root.setProperty('--ad-x', `${inset.x}px`)
   root.setProperty('--ad-bottom', `${inset.bottom}px`)
   root.setProperty('--ad-top', `${inset.top}px`)
@@ -48,8 +51,12 @@ export function forceAdSafeZone(on) {
 }
 
 function listen() {
-  if (active || forced) window.addEventListener('resize', apply)
-  else window.removeEventListener('resize', apply)
+  apply()
+}
+
+// The bottom strip is reserved from the start, and follows the window's size.
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', apply)
   apply()
 }
 
