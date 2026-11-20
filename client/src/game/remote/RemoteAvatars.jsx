@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 
-import { benchSeatZ, padCenterX, PAD_YAW, padAt } from '@shared/world'
+import { benchSeat, PAD_YAW, padAt } from '@shared/world'
 
 import { remotePlayers } from '../../net/remotePlayers'
 import { getQuality } from '../../store/quality'
@@ -22,6 +22,8 @@ const MAX_SPEED = 10.875
 const _up = new Vector3(0, 1, 0)
 const _hip = new Vector3()
 const _spinTurn = { pitch: 0, roll: 0 }
+/** Where a remote trainee sits on their bench (reused each frame). */
+const _seat = { x: 0, z: 0 }
 
 /**
  * One other player as their real Bloxity avatar, dressed as they are - arms painted as
@@ -104,7 +106,10 @@ function RemoteAvatar({ sessionId, look }) {
     m.run = running ? 1 : 0
     // Training: sitting on that pad's bench, where they stood along it.
     const pad = running ? padAt(r.position.x, r.position.z, 1) : -1
-    if (pad >= 0) group.position.set(padCenterX(pad), r.position.y, benchSeatZ(pad, r.position.z))
+    if (pad >= 0) {
+      benchSeat(pad, r.position.x, r.position.z, _seat)
+      group.position.set(_seat.x, r.position.y, _seat.z)
+    }
 
     const speed = running ? 0 : r.speed
     m.speed = speed

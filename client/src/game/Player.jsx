@@ -4,7 +4,7 @@ import { Quaternion, Vector3 } from 'three'
 
 import { levelCap, spinRate } from '@shared/balance'
 import { isPadUnlocked } from '@shared/logic'
-import { barGrabX, clampToWalkable, groundHeightAt, LAUNCH_STAND, benchSeatZ, padCenterX, PAD_YAW, padAt, STATIC_COLLIDERS, TRACK_START_Z } from '@shared/world'
+import { barGrabX, clampToWalkable, groundHeightAt, LAUNCH_STAND, benchSeat, PAD_YAW, padAt, STATIC_COLLIDERS, TRACK_START_Z } from '@shared/world'
 
 import { sfx } from '../audio/sfx'
 import { getGame } from '../store/game'
@@ -35,6 +35,8 @@ const _move = new Vector3()
 const _camForward = new Vector3()
 const _camRight = new Vector3()
 const _targetQuat = new Quaternion()
+/** Where a trainee sits on their bench (reused each frame). */
+const _seat = { x: 0, z: 0 }
 const _up = new Vector3(0, 1, 0)
 const _clamped = { x: 0, z: 0 }
 const _pivot = new Vector3()
@@ -261,7 +263,10 @@ export function Player({ onAvatarReady }) {
       const y = steppingUp ? shownY + (pos.y - shownY) * Math.min(1, delta * 18) : pos.y
       _pivot.set(pos.x, y + BODY.pivot, pos.z)
       // Training: sitting on the pad's bench, where you stood along it.
-      if (training) _pivot.set(padCenterX(pad), y + BODY.pivot, benchSeatZ(pad, pos.z))
+      if (training) {
+        benchSeat(pad, pos.x, pos.z, _seat)
+        _pivot.set(_seat.x, y + BODY.pivot, _seat.z)
+      }
       if (pulling) {
         // Whirling round the bar: your middle swings round it, the body turned with it,
         // hanging further out (the arms stretching) the faster you go.

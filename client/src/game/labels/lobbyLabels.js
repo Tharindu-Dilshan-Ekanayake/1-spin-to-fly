@@ -1,10 +1,10 @@
 import { EGGS, PADS, PETS, RARITIES, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
 import { isPadUnlocked } from '@shared/logic'
-import { EGG_STANDS, FREE_REWARD, LAUNCH_STAND, padCenterX, padCenterZ, PORTALS, SPHINX_STAND, SPIN_BAR, TABLE_DX, TIRE_STANDS } from '@shared/world'
+import { EGG_STANDS, FREE_REWARD, LAUNCH_STAND, padCenterX, padCenterZ, PORTALS, SPHINX_STAND, SPIN_BAR, TIRE_STANDS } from '@shared/world'
 
 import { eggHeight } from '../world/eggs'
-import { BOARD_BOTTOM, BOARD_HEIGHT, PAD_THEMES } from '../world/structures'
+import { PAD_THEMES } from '../world/structures'
 import { SCOREBOARD } from '../world/terrain'
 
 /**
@@ -65,10 +65,9 @@ const padReserve = (index) => {
 export function padLabels(profile) {
   return PADS.map((pad, i) => ({
     id: `pad-${i}`,
-    // Well in front of the treadmill's backboard (structures.js), centred on it: the label
-    // turns to face the camera and is wider than the board, so any nearer and its far half
-    // swings behind the board seen from an angle.
-    position: [padCenterX(i) + TABLE_DX - 2.2, BOARD_BOTTOM + BOARD_HEIGHT / 2, padCenterZ(i)],
+    // Floating over the podium's middle, high enough to clear whoever sits on the bench; it
+    // turns to face the camera, so it reads from the carpet and from behind the trainee.
+    position: [padCenterX(i), 4.6, padCenterZ(i)],
     spec: padLabelSpec(i, isPadUnlocked(profile, i), profile.world || 0),
     reserve: padReserve(i),
     fade: 150,
