@@ -50,6 +50,12 @@ export const STYLE = {
    * bands, under a cream frosting cap that drips a wavy way down the sides.
    */
   MESA: 15,
+  /**
+   * Cut stone: the instance colour in courses of ashlar blocks (1.6 x 0.8 m, every other
+   * course offset by half a block) with dark mortar joints and each block its own shade;
+   * big square flagstones on top. Fades to plain stone far off. The royal palace.
+   */
+  STONE: 16,
 }
 
 /** Shared clock for animated styles; WorldClock advances it once per frame. */
@@ -220,7 +226,7 @@ const fragmentBody = /* glsl */ `
         col *= mix(0.82, 1.05, cube);
       }
       col *= toyTile(sp);
-    } else {
+    } else if (style < 16.0) {
       // Mesa: frosting on top dripping down the sides in waves, candy strata below.
       float drip = 0.55 + 0.4 * sin(vToyPos.x * 1.9 + vToyPos.z * 1.3) + 0.3 * sin((vToyPos.x - vToyPos.z) * 0.7);
       if (isTop || (vToyTop - vToyPos.y) < drip) {
@@ -230,6 +236,23 @@ const fragmentBody = /* glsl */ `
         col *= 0.8 + 0.3 * fract(sin(band * 12.9898) * 43758.5453);
       }
       col *= toyTile(sp);
+    } else {
+      // Stone: ashlar courses with mortar joints; flagstones on top.
+      vec2 size = isTop ? vec2(1.6) : vec2(1.6, 0.8);
+      vec2 bp = (isTop ? vToyPos.xz : vec2(an.x > 0.5 ? vToyPos.z : vToyPos.x, vToyPos.y)) / size;
+      bp.x += mod(floor(bp.y), 2.0) * 0.5;
+      vec2 cell = floor(bp);
+      vec2 f = fract(bp);
+      vec2 w = fwidth(bp) * size;
+      float aa = max(max(w.x, w.y), 1e-4);
+      vec2 gap = min(f, 1.0 - f) * size;
+      float joint = 1.0 - smoothstep(0.03, 0.03 + aa * 1.5, min(gap.x, gap.y));
+      float far = smoothstep(0.08, 0.3, aa);
+      float shade = 0.9 + 0.16 * toyHash(cell + 0.37);
+      // A lit upper edge on each block, a shaded lower one: they read as cut and laid.
+      float bevel = isTop ? 0.0 : (smoothstep(0.82, 1.0, f.y) * 0.08 - smoothstep(0.18, 0.0, f.y) * 0.06);
+      col *= mix(shade + bevel, 1.0, far);
+      col = mix(col, col * 0.62, joint * (1.0 - far));
     }
 
     diffuseColor.rgb = col;

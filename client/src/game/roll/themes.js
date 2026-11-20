@@ -194,4 +194,6 @@ export const STAGE_LOOKS = {
  * borrows these two greens for the chunks a landing throws up).
  */
 export const LANE_STRIPE = 5
+/** Each stage's runway colour, round the rainbow (Lane.jsx paints its squares in it; the landing's crater and slabs are made of it). */
+export const RUNWAY_RAINBOW = ['#ff5a5a', '#ff9a2e', '#ffd93a', '#5fdc4a', '#3fd6e8', '#4f86ff', '#a465ff', '#ff6bd0']
 export const LANE_RAINBOW = ['#2fbf47', '#3ad456']

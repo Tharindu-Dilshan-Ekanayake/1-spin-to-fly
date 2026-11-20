@@ -6,15 +6,15 @@
  * Shared by client (display) and server (authority): both always agree on costs and
  * multipliers because they read the same table.
  *
- * The loop (Rubber Arm Launch): do rubber-arm pull-ups for Power -> grab the launch
- * posts, walk back stretching your arms like a slingshot and let go (more Power flings you
- * further, and every metre pays) -> Wins -> stretchier arms, eggs and pull-up bars ->
- * rebirth at max level for a bigger Power multiplier and a higher cap -> fly further
- * still.
+ * The loop (1 Spin to Fly): train on the AFK training bars for Strength -> grab the SPIN
+ * BAR, whirl round it and TAP TO FLY at the top of the meter (more Strength flings you
+ * further, and every metre pays) -> Cash -> better arms, eggs and training bars ->
+ * rebirth at max level for a bigger Strength multiplier and a higher cap -> fly further
+ * still. Now and then a LUCKY, SECRET or MYTHIC throw multiplies a launch (RARE_THROWS).
  *
  * Inside the code the template's names stay (so saves and the server never change):
- * `health` is Power, a `tire` is a pair of ARMS, a `pad` is a pull-up bar and a `roll` is
- * a launch. Only what players see was renamed. How each arm looks is
+ * `health` is Strength, `wins` is Cash, a `tire` is a pair of ARMS, a `pad` is a training
+ * bar and a `roll` is a launch. Only what players see was renamed. How each arm looks is
  * client/src/game/armStyles.js.
  */
 
@@ -24,11 +24,6 @@
 export const TRAIN_INTERVAL = 0.6
 /** Seconds between the "+N" gains you earn while you fly. */
 export const ROLL_TICK = 1
-/**
- * Walking around the lobby earns Health too: one gain for every WALK_STEP metres
- * walked (about one a second at a walk). Less than a pad, so training still pays.
- */
-export const WALK_STEP = 8
 
 /**
  * Your level comes from your Health: reaching level L takes healthForLevel(L) Health.
@@ -104,55 +99,56 @@ export const REBIRTH_SKIP_ROLLS = 10
  * row work in Palm Beach only, and stand locked in World 1 as a teaser).
  */
 export const PADS = [
-  { id: 'starter', name: 'Wooden Bar', mult: 1, rebirths: 0 },
-  { id: 'speed', name: 'Bouncy Bar', mult: 2, rebirths: 1 },
-  { id: 'turbo', name: 'Bubblegum Bar', mult: 4, rebirths: 2 },
-  { id: 'nitro', name: 'Steel Bar', mult: 10, rebirths: 4 },
-  { id: 'rocket', name: 'Rocket Bar', mult: 20, rebirths: 6 },
-  { id: 'diamond', name: 'Crystal Bar', mult: 40, product: 'padVeryOp', tag: 'VERY OP!' },
-  { id: 'galaxy', name: 'Galaxy Bar', mult: 100, product: 'padBest', tag: 'BEST OVERALL!' },
+  { id: 'starter', name: 'Wooden Bench', mult: 1, rebirths: 0 },
+  { id: 'speed', name: 'Bouncy Bench', mult: 2, rebirths: 1 },
+  { id: 'turbo', name: 'Bubblegum Bench', mult: 4, rebirths: 2 },
+  { id: 'nitro', name: 'Steel Bench', mult: 10, rebirths: 4 },
+  { id: 'rocket', name: 'Rocket Bench', mult: 20, rebirths: 6 },
+  { id: 'diamond', name: 'Crystal Bench', mult: 40, product: 'padVeryOp', tag: 'VERY OP!' },
+  { id: 'galaxy', name: 'Galaxy Bench', mult: 100, product: 'padBest', tag: 'BEST OVERALL!' },
   // Kept close to the Galaxy Bar: every Power multiplier here speeds up the whole late
   // game (scripts/balance-sim.mjs) - the beach bars are milestones, not a jump.
-  { id: 'surf', name: 'Surf Bar', mult: 115, rebirths: 10, world: 1 },
-  { id: 'tsunami', name: 'Tsunami Bar', mult: 130, rebirths: 16, world: 1 },
+  { id: 'surf', name: 'Surf Bench', mult: 115, rebirths: 10, world: 1 },
+  { id: 'tsunami', name: 'Tsunami Bench', mult: 130, rebirths: 16, world: 1 },
 ]
 
 // --- Arms (the template's tires) ---------------------------------------------------
 
 /**
- * The arms you wear. `power` is the Health every single gain is worth before
- * multipliers (the "+1" of Noodle Arms); `cost` is in Wins; `rarity` (RARITIES) is shown
- * on its stand. Bought in order at the arm shop. They start soft and rubbery - noodle,
- * gummy, jelly - turn to stone, bamboo, robot and metal, then frost, magma and gems, and
- * end as nebula, dragon, cosmic and infinity arms. About x2.6 power for x2.8-x3.3 the
- * Wins each. The ids are the template's (saves and the server key on them).
+ * The arms you wear. `power` is the Strength every single gain is worth before
+ * multipliers (the "+1" of the Starter Arms); `cost` is in Cash; `rarity` (RARITIES) is
+ * shown on its stand. Bought in order at the arm shop. They start as plain colours, turn
+ * to polished metals - bronze, silver, gold, platinum, titanium, rose gold - then cut gems,
+ * and end as Rainbow Diamond and Infinity Gem arms; every pair after the first glows
+ * inside and out (client armStyles.js). About x2.6 power for x2.8-x3.3 the Cash each. The
+ * ids are the template's (saves and the server key on them), not the names.
  */
 export const TIRES = [
-  { id: 'bicycle', name: 'Noodle Arms', power: 1, cost: 0, rarity: 'common' },
+  { id: 'bicycle', name: 'Starter Arms', power: 1, cost: 0, rarity: 'common' },
   // Cheap enough to buy with the Wins from your very first launch.
-  { id: 'mountain', name: 'Rubber Band Arms', power: 3, cost: 1, rarity: 'common' },
-  { id: 'wood', name: 'Gummy Arms', power: 5, cost: 15, rarity: 'common' },
-  { id: 'stone', name: 'Bubblegum Arms', power: 12, cost: 75, rarity: 'uncommon' },
-  { id: 'cookie', name: 'Jelly Arms', power: 30, cost: 300, rarity: 'uncommon' },
-  { id: 'pizza', name: 'Stone Arms', power: 75, cost: 1200, rarity: 'rare' },
-  { id: 'donut', name: 'Bamboo Arms', power: 200, cost: 4500, rarity: 'rare' },
-  { id: 'watermelon', name: 'Octopus Arms', power: 500, cost: 16000, rarity: 'rare' },
-  { id: 'monster', name: 'Robot Arms', power: 1250, cost: 55000, rarity: 'epic' },
-  { id: 'mint', name: 'Zebra Arms', power: 3500, cost: 180000, rarity: 'epic' },
-  { id: 'silver', name: 'Chrome Arms', power: 9000, cost: 600000, rarity: 'epic' },
-  { id: 'ice', name: 'Frost Arms', power: 23000, cost: 2e6, rarity: 'epic' },
-  { id: 'gold', name: 'Gilded Arms', power: 60000, cost: 6e6, rarity: 'legendary' },
-  { id: 'lava', name: 'Magma Arms', power: 155000, cost: 17e6, rarity: 'legendary' },
-  { id: 'platinum', name: 'Thunder Arms', power: 400000, cost: 48e6, rarity: 'legendary' },
+  { id: 'mountain', name: 'White Arms', power: 3, cost: 1, rarity: 'common' },
+  { id: 'wood', name: 'Red Arms', power: 5, cost: 15, rarity: 'common' },
+  { id: 'stone', name: 'Orange Arms', power: 12, cost: 75, rarity: 'uncommon' },
+  { id: 'cookie', name: 'Yellow Arms', power: 30, cost: 300, rarity: 'uncommon' },
+  { id: 'pizza', name: 'Green Arms', power: 75, cost: 1200, rarity: 'rare' },
+  { id: 'donut', name: 'Blue Arms', power: 200, cost: 4500, rarity: 'rare' },
+  { id: 'watermelon', name: 'Purple Arms', power: 500, cost: 16000, rarity: 'rare' },
+  { id: 'monster', name: 'Black Arms', power: 1250, cost: 55000, rarity: 'epic' },
+  { id: 'mint', name: 'Bronze Arms', power: 3500, cost: 180000, rarity: 'epic' },
+  { id: 'silver', name: 'Silver Arms', power: 9000, cost: 600000, rarity: 'epic' },
+  { id: 'ice', name: 'Gold Arms', power: 23000, cost: 2e6, rarity: 'epic' },
+  { id: 'gold', name: 'Platinum Arms', power: 60000, cost: 6e6, rarity: 'legendary' },
+  { id: 'lava', name: 'Titanium Arms', power: 155000, cost: 17e6, rarity: 'legendary' },
+  { id: 'platinum', name: 'Rose Gold Arms', power: 400000, cost: 48e6, rarity: 'legendary' },
   { id: 'emerald', name: 'Emerald Arms', power: 1.05e6, cost: 135e6, rarity: 'legendary' },
   { id: 'ruby', name: 'Ruby Arms', power: 2.7e6, cost: 380e6, rarity: 'mythic' },
-  { id: 'diamond', name: 'Diamond Arms', power: 7e6, cost: 1.05e9, rarity: 'mythic' },
-  { id: 'rainbow', name: 'Spectrum Arms', power: 1.8e7, cost: 3e9, rarity: 'mythic' },
-  { id: 'unicorn', name: 'Cotton Candy Arms', power: 4.8e7, cost: 8.5e9, rarity: 'mythic' },
-  { id: 'galaxy', name: 'Nebula Arms', power: 1.25e8, cost: 2.4e10, rarity: 'secret' },
-  { id: 'dragon', name: 'Dragon Arms', power: 3.3e8, cost: 6.8e10, rarity: 'secret' },
-  { id: 'cosmic', name: 'Cosmic Arms', power: 8.6e8, cost: 1.9e11, rarity: 'secret' },
-  { id: 'infinity', name: 'Infinity Arms', power: 2.2e9, cost: 5.4e11, rarity: 'secret' },
+  { id: 'diamond', name: 'Sapphire Arms', power: 7e6, cost: 1.05e9, rarity: 'mythic' },
+  { id: 'rainbow', name: 'Amethyst Arms', power: 1.8e7, cost: 3e9, rarity: 'mythic' },
+  { id: 'unicorn', name: 'Topaz Arms', power: 4.8e7, cost: 8.5e9, rarity: 'mythic' },
+  { id: 'galaxy', name: 'Diamond Arms', power: 1.25e8, cost: 2.4e10, rarity: 'secret' },
+  { id: 'dragon', name: 'Black Diamond Arms', power: 3.3e8, cost: 6.8e10, rarity: 'secret' },
+  { id: 'cosmic', name: 'Rainbow Diamond Arms', power: 8.6e8, cost: 1.9e11, rarity: 'secret' },
+  { id: 'infinity', name: 'Infinity Gem Arms', power: 2.2e9, cost: 5.4e11, rarity: 'secret' },
 ]
 
 // --- Launching (the template's rolls) ----------------------------------------------
@@ -249,13 +245,13 @@ export const TROPHY_SPACING = 80
 export const TROPHY_METERS = 80
 
 /**
- * Seconds from letting go of the stretched arms to flying past the launch posts: the
- * rubber snapping back and slinging you forward. (The pull-back before it is yours: you
- * hold for as long as you like, and the server only hears about the release.)
+ * Seconds from letting go of the bar to flying clear of it: the last whirl round the bar
+ * before you're flung off the front. (The spinning before it is yours: you spin for as
+ * long as you like, and the server only hears about the release.)
  */
 export const ROLL_LAUNCH = 0.55
 /**
- * Seconds a launch of `distance` metres takes, the snap included. Logarithmic: long
+ * Seconds a launch of `distance` metres takes, the last whirl included. Logarithmic: long
  * flights stay short.
  */
 export const rollDuration = (distance) => ROLL_LAUNCH + 3 + 2.2 * Math.log(1 + distance / 60)
@@ -263,31 +259,30 @@ export const rollDuration = (distance) => ROLL_LAUNCH + 3 + 2.2 * Math.log(1 + d
 export const ROLL_RECOVERY = 2.2
 
 /**
- * The stretch meter. Walk up to the launch posts and press LAUNCH: you grab them. Then
- * walk BACK (joystick / S) and your arms stretch like rubber - the meter is how far back
- * you've got, out of as far as your arms reach. At full stretch the rubber twangs: the
- * meter bounces off the top and back, again and again (TWANG_PERIOD a bounce, dipping
- * TWANG_DEPTH). Press LET GO and you fly out between the posts. `accuracy` is how full the
- * meter was when you let go: 1 at the very top of a twang. The grade it lands in decides
- * the launch, each grade clearly apart from the next: how far you fly (`reach`, a share of
- * what your Power alone would send you - half the distance for a WEAK one, half as far
- * again for a PERFECT one) and how many Wins it pays (`bonus`). Auto Launch skips the
- * meter: a plain x1 launch, between GOOD and GREAT.
+ * The spin meter. Walk under the SPIN BAR and you grab it and start swinging round it. A
+ * marker runs up and down the meter beside you - bottom (red) to top (green) and back,
+ * SPIN_RISE seconds each way - and you spin faster the higher it is. TAP TO FLY lets go:
+ * `accuracy` is where the marker was (1 at the very top). Its grade decides the launch,
+ * each grade clearly apart from the next: how far you fly (`reach`, a share of what your
+ * Strength alone would send you - half the distance for a WEAK one, half as far again for
+ * a PERFECT one) and how much Cash it pays (`bonus`). Auto Launch skips the meter: a plain
+ * x1 launch, between GOOD and GREAT.
  *
- * Wins are the Power's worth times `bonus` - not paid by the metres the grade adds: late
+ * Cash is the Strength's worth times `bonus` - not paid by the metres the grade adds: late
  * in the game each stage pays ~1.4 times the last, so paying for half as far again would
- * multiply a PERFECT launch's Wins dozens of times over (logic.applyRoll).
+ * multiply a PERFECT launch's Cash dozens of times over (logic.applyRoll).
+ *
+ * The marker moves at an even speed, so the PERFECT band (the top 12%) is lit for about
+ * 0.2 s each time it comes round: a real test of timing, still fair on a phone.
  */
-/**
- * Seconds per twang at full stretch, and how far down the meter each one dips. The
- * bounce is sharp at the top (|sin|), so the PERFECT moment is ~0.1 s each time: a real
- * test of timing, still fair on a phone, and a launch let go at full stretch is never
- * worse than GOOD.
- */
-export const TWANG_PERIOD = 0.75
-export const TWANG_DEPTH = 0.5
-/** The meter (0-1) `seconds` after reaching full stretch: bouncing off the top. */
-export const twangAt = (seconds) => 1 - TWANG_DEPTH * Math.abs(Math.sin((Math.PI * Math.max(0, seconds)) / TWANG_PERIOD))
+export const SPIN_RISE = 0.85
+/** The meter (0-1) `seconds` after grabbing the bar: up from the bottom, then back and forth. */
+export function spinMeterAt(seconds) {
+  const x = (Math.max(0, seconds) / SPIN_RISE) % 2
+  return x < 1 ? x : 2 - x
+}
+/** How fast you whirl round the bar (radians a second) with the meter at `meter`. */
+export const spinRate = (meter) => 5 + 13 * Math.min(1, Math.max(0, meter))
 /**
  * Grades by `min` accuracy: PERFECT is the top 12% of the meter, GREAT 30%, GOOD 60%.
  * `reach` is [at the grade's outer edge, at its inner edge]: a little further the nearer
@@ -297,14 +292,14 @@ export const HIT_GRADES = [
   { id: 'perfect', min: 0.88, reach: [1.4, 1.5], bonus: 1.6, label: 'PERFECT!' },
   { id: 'great', min: 0.7, reach: [1.1, 1.2], bonus: 1.25, label: 'GREAT!' },
   { id: 'good', min: 0.4, reach: [0.8, 0.9], bonus: 1, label: 'GOOD' },
-  { id: 'weak', min: 0, reach: [0.5, 0.6], bonus: 0.75, label: 'TOO LOOSE...' },
+  { id: 'weak', min: 0, reach: [0.5, 0.6], bonus: 0.75, label: 'TOO SLOW...' },
 ]
 const clampAccuracy = (accuracy) => Math.min(1, Math.max(0, accuracy))
 /** The grade for a meter `accuracy` (0-1), or null for a launch without the meter. */
 export const hitGrade = (accuracy) => (Number.isFinite(accuracy) ? HIT_GRADES.find((g) => clampAccuracy(accuracy) >= g.min) : null)
 /**
  * How far a launch at meter `accuracy` flings you, as a share of what your Power alone
- * would: 0.5 barely pulled, 1.5 at the top of a twang, in a clear step per grade; 1 for a
+ * would: 0.5 at the bottom of the meter, 1.5 at the very top, in a clear step per grade; 1 for a
  * launch without the meter.
  */
 export function hitReach(accuracy) {
@@ -315,6 +310,32 @@ export function hitReach(accuracy) {
   const t = Math.min(1, (clampAccuracy(accuracy) - grade.min) / (top - grade.min))
   return grade.reach[0] + (grade.reach[1] - grade.reach[0]) * t
 }
+
+/**
+ * Rare throws: every launch has a small chance of being a LUCKY, SECRET or MYTHIC throw,
+ * rolled by the authority. It multiplies both how far you fly and the Cash it pays by
+ * `mult`, and plays its own cutscene (client roll/rareThrow). A GREAT launch has
+ * RARE_LUCK.great times the chance, a PERFECT one RARE_LUCK.perfect times: timing pays.
+ * Checked rarest first.
+ */
+export const RARE_THROWS = [
+  { id: 'mythic', chance: 0.004, mult: 5, label: 'MYTHIC THROW!', color: '#ff4fd8' },
+  { id: 'secret', chance: 0.015, mult: 3, label: 'SECRET THROW!', color: '#a46bff' },
+  { id: 'lucky', chance: 0.06, mult: 2, label: 'LUCKY THROW!', color: '#ffb21f' },
+]
+export const RARE_LUCK = { great: 1.5, perfect: 2 }
+/** The rare throw a launch graded `hitId` lands with `rand`, or null for a normal one. */
+export function rollRareThrow(rand, hitId = null) {
+  const luck = RARE_LUCK[hitId] ?? 1
+  let r = rand()
+  for (const t of RARE_THROWS) {
+    const chance = t.chance * luck
+    if (r < chance) return t
+    r -= chance
+  }
+  return null
+}
+export const rareThrowById = (id) => RARE_THROWS.find((t) => t.id === id) || null
 
 // --- Pets & eggs ------------------------------------------------------------------
 
@@ -385,8 +406,8 @@ export const MULTI_HATCH = 3
 export const POTION_DURATION_MS = 5 * 60 * 1000
 
 export const ITEMS = {
-  potionHealth: { name: 'x2 Power Potion', kind: 'potion', boost: 'health', durationMs: POTION_DURATION_MS },
-  potionWins: { name: 'x2 Wins Potion', kind: 'potion', boost: 'wins', durationMs: POTION_DURATION_MS },
+  potionHealth: { name: 'x2 Strength Potion', kind: 'potion', boost: 'health', durationMs: POTION_DURATION_MS },
+  potionWins: { name: 'x2 Cash Potion', kind: 'potion', boost: 'wins', durationMs: POTION_DURATION_MS },
   eggMeadow: { name: 'Grass Egg', kind: 'egg', egg: 'meadow' },
   eggSunset: { name: 'Sunset Egg', kind: 'egg', egg: 'sunset' },
   eggUnicorn: { name: 'Unicorn Egg', kind: 'egg', egg: 'unicorn' },
@@ -396,12 +417,12 @@ export const ITEMS = {
 /** 7-day cycle; day N unlocks N x 24h after the cycle started. */
 export const DAILY_INTERVAL_MS = 24 * 60 * 60 * 1000
 export const DAILY_REWARDS = [
-  { label: 'x2 Wins', icon: 'potionWins', sub: '5m', grant: { item: 'potionWins' } },
+  { label: 'x2 Cash', icon: 'potionWins', sub: '5m', grant: { item: 'potionWins' } },
   { label: 'Dragon', icon: 'pet:dragon', sub: 'x1', grant: { pet: 'dragon' } },
-  { label: 'x2 Power', icon: 'potionHealth', sub: '5m', grant: { item: 'potionHealth' } },
+  { label: 'x2 Strength', icon: 'potionHealth', sub: '5m', grant: { item: 'potionHealth' } },
   { label: 'Unicorn Egg', icon: 'egg:unicorn', sub: 'x1', grant: { item: 'eggUnicorn' } },
-  { label: 'x2 Power', icon: 'potionHealth', sub: '5m', grant: { item: 'potionHealth' } },
-  { label: 'x2 Wins', icon: 'potionWins', sub: '5m', grant: { item: 'potionWins' } },
+  { label: 'x2 Strength', icon: 'potionHealth', sub: '5m', grant: { item: 'potionHealth' } },
+  { label: 'x2 Cash', icon: 'potionWins', sub: '5m', grant: { item: 'potionWins' } },
   { label: 'Volcano Egg', icon: 'egg:volcano', sub: 'x1', grant: { item: 'eggVolcano' } },
 ]
 
@@ -410,15 +431,27 @@ export const DAILY_REWARDS = [
  * forward to every few minutes for the first hour.
  */
 export const PLAYTIME_REWARDS = [
-  { minutes: 3, label: '+10 Wins', icon: 'trophy', grant: { wins: 10 } },
-  { minutes: 8, label: 'x2 Power', icon: 'potionHealth', grant: { item: 'potionHealth' } },
+  { minutes: 3, label: '+$10', icon: 'trophy', grant: { wins: 10 } },
+  { minutes: 8, label: 'x2 Strength', icon: 'potionHealth', grant: { item: 'potionHealth' } },
   { minutes: 15, label: 'Grass Egg', icon: 'egg:meadow', grant: { item: 'eggMeadow' } },
-  { minutes: 25, label: 'x2 Wins', icon: 'potionWins', grant: { item: 'potionWins' } },
-  { minutes: 35, label: '+250 Wins', icon: 'trophy', grant: { wins: 250 } },
+  { minutes: 25, label: 'x2 Cash', icon: 'potionWins', grant: { item: 'potionWins' } },
+  { minutes: 35, label: '+$250', icon: 'trophy', grant: { wins: 250 } },
   { minutes: 45, label: 'Sunset Egg', icon: 'egg:sunset', grant: { item: 'eggSunset' } },
-  { minutes: 60, label: 'x2 Power', icon: 'potionHealth', grant: { item: 'potionHealth' } },
+  { minutes: 60, label: 'x2 Strength', icon: 'potionHealth', grant: { item: 'potionHealth' } },
   { minutes: 90, label: 'Unicorn Egg', icon: 'egg:unicorn', grant: { item: 'eggUnicorn' } },
 ]
+
+/**
+ * Codes, redeemed in Settings: each once per player, typed in any case. `grant` is an
+ * applyGrant grant; `label` is what the toast says. Add a code here to hand one out.
+ */
+export const CODES = {
+  SPIN: { label: 'x2 Cash Potion', grant: { item: 'potionWins' } },
+  FLY: { label: '+$250', grant: { wins: 250 } },
+  STRONG: { label: 'x2 Strength Potion', grant: { item: 'potionHealth' } },
+  RELEASE: { label: 'Grass Egg', grant: { item: 'eggMeadow' } },
+  FRIENDS: { label: 'Sunset Egg', grant: { item: 'eggSunset' } },
+}
 
 /** The stand by spawn: a pet the first time, a potion on later sessions. */
 export const FREE_REWARD = { firstTime: { pet: 'crab' }, repeat: { item: 'potionHealth' } }
@@ -434,7 +467,7 @@ export const OFFLINE_MIN_MS = 60 * 1000
  * open for good, both ways. Stepping through earns the badge of the same id.
  */
 export const WORLD_PORTALS = {
-  world2: { name: 'Palm Beach', wins: 1000000, rebirths: 8 },
+  world2: { name: 'Shipwreck Cove', wins: 1000000, rebirths: 8 },
 }
 
 /**
@@ -455,8 +488,8 @@ export const SECRET_STAR = { world: 1, power: 2 }
  * portal) costs nothing.
  */
 export const WORLDS = [
-  { id: 'world1', name: 'Stretch Park', wins: 1 },
-  { id: 'world2', name: 'Palm Beach', wins: 3 },
+  { id: 'world1', name: 'Green Valley', wins: 1 },
+  { id: 'world2', name: 'Shipwreck Cove', wins: 3 },
 ]
 
 /** Palm Beach's stages: [id, name, theme], one for each of World 1's. */
@@ -472,7 +505,7 @@ const WORLD2_STAGES = [
   ['w2-tiki-stadium', 'Tiki Huts', 'jungle'],
   ['w2-coral-bowl', 'Coral Bowl', 'ocean'],
   ['w2-lagoon-field', 'Lagoon Field', 'ocean'],
-  ['w2-shipwreck-cove', 'Shipwreck Cove', 'swamp'],
+  ['w2-shipwreck-cove', 'Sunken Galleon', 'swamp'],
   ['w2-pelican-point', 'Pelican Point', 'sky'],
   ['w2-beach-party-bowl', 'Beach Party Bowl', 'neon'],
   ['w2-lighthouse-field', 'Lighthouse Field', 'beach'],
@@ -549,11 +582,11 @@ export const zonesOf = (world) => WORLD_ZONES[world] ?? ZONES
  * is bought with them. `pass` = permanent unlock; `consumable` = grants every time.
  */
 export const SHOP = {
-  healthX2: { name: 'x2 Power', price: 400, kind: 'pass' },
-  winsX2: { name: 'x2 Wins', price: 2500, kind: 'pass' },
+  healthX2: { name: 'x2 Strength', price: 400, kind: 'pass' },
+  winsX2: { name: 'x2 Cash', price: 2500, kind: 'pass' },
   autoRoll: { name: 'Auto Launch', price: 150, kind: 'pass' },
-  padVeryOp: { name: 'VERY OP! Bar', price: 150000, kind: 'pass' },
-  padBest: { name: 'BEST OVERALL! Bar', price: 2500000, kind: 'pass' },
+  padVeryOp: { name: 'VERY OP! Bench', price: 150000, kind: 'pass' },
+  padBest: { name: 'BEST OVERALL! Bench', price: 2500000, kind: 'pass' },
   sphinx: { name: 'Sphinx', price: 2500000, kind: 'consumable', grant: { pet: 'sphinx' }, stock: 1000 },
 }
 
@@ -563,14 +596,14 @@ export const SHOP = {
  * packs grow with you: `winsRolls` max-level launches' worth of Wins.
  */
 export const GEM_PRODUCTS = {
-  wins_small: { name: 'Pile of Wins', blurb: '10 max-level launches of Wins', icon: 'trophy', grant: { winsRolls: 10 } },
-  wins_big: { name: 'Mountain of Wins', blurb: '60 max-level launches of Wins', icon: 'trophy', grant: { winsRolls: 60 } },
-  potion_bundle: { name: 'Potion Bundle', blurb: '3 x2 Power + 3 x2 Wins potions', icon: 'potionHealth', grant: { items: { potionHealth: 3, potionWins: 3 } } },
+  wins_small: { name: 'Pile of Cash', blurb: '10 max-level launches of Cash', icon: 'trophy', grant: { winsRolls: 10 } },
+  wins_big: { name: 'Mountain of Cash', blurb: '60 max-level launches of Cash', icon: 'trophy', grant: { winsRolls: 60 } },
+  potion_bundle: { name: 'Potion Bundle', blurb: '3 x2 Strength + 3 x2 Cash potions', icon: 'potionHealth', grant: { items: { potionHealth: 3, potionWins: 3 } } },
   volcano_eggs: { name: '3 Volcano Eggs', blurb: 'The best pets in the game', icon: 'egg:volcano', grant: { items: { eggVolcano: 3 } } },
-  auto_roll: { name: 'Auto Launch', blurb: 'Launches you from the Launch Pad', icon: 'tire', grant: { pass: 'autoRoll' } },
-  health_x2: { name: 'x2 Power', blurb: 'Double every Power gain, forever', icon: 'heart', grant: { pass: 'healthX2' } },
-  wins_x2: { name: 'x2 Wins', blurb: 'Double every launch’s Wins, forever', icon: 'trophy', grant: { pass: 'winsX2' } },
-  pad_best: { name: 'Galaxy Bar', blurb: 'Unlocks the x100 Galaxy pull-up bar', icon: 'portal', grant: { pass: 'padBest' } },
+  auto_roll: { name: 'Auto Launch', blurb: 'Spins and launches you by itself', icon: 'tire', grant: { pass: 'autoRoll' } },
+  health_x2: { name: 'x2 Strength', blurb: 'Double every Strength gain, forever', icon: 'heart', grant: { pass: 'healthX2' } },
+  wins_x2: { name: 'x2 Cash', blurb: 'Double every launch’s Cash, forever', icon: 'trophy', grant: { pass: 'winsX2' } },
+  pad_best: { name: 'Galaxy Bench', blurb: 'Unlocks the x100 Galaxy training bench', icon: 'portal', grant: { pass: 'padBest' } },
 }
 
 /**
@@ -578,8 +611,8 @@ export const GEM_PRODUCTS = {
  * and hyphens. `cooldownMs` keeps a player from chaining them.
  */
 export const AD_REWARDS = {
-  'health-potion': { label: 'x2 Power Potion', icon: 'potionHealth', grant: { item: 'potionHealth' }, cooldownMs: 3 * 60 * 1000 },
-  'wins-potion': { label: 'x2 Wins Potion', icon: 'potionWins', grant: { item: 'potionWins' }, cooldownMs: 3 * 60 * 1000 },
+  'health-potion': { label: 'x2 Strength Potion', icon: 'potionHealth', grant: { item: 'potionHealth' }, cooldownMs: 3 * 60 * 1000 },
+  'wins-potion': { label: 'x2 Cash Potion', icon: 'potionWins', grant: { item: 'potionWins' }, cooldownMs: 3 * 60 * 1000 },
 }
 
 /** Sphinx stock shown before the server reports the live count. */
@@ -638,9 +671,9 @@ export const crowdBonus = (others) => 1 + Math.min(CROWD_MAX, CROWD_STEP * Math.
  */
 export const LUCKY_CHANCE = 0.08
 export const LUCKY_GIFTS = [
-  { weight: 45, label: 'Bag of Wins', icon: 'trophy', grant: { winsRolls: 4 } },
-  { weight: 20, label: 'x2 Wins Potion', icon: 'potionWins', grant: { item: 'potionWins' } },
-  { weight: 20, label: 'x2 Power Potion', icon: 'potionHealth', grant: { item: 'potionHealth' } },
+  { weight: 45, label: 'Bag of Cash', icon: 'trophy', grant: { winsRolls: 4 } },
+  { weight: 20, label: 'x2 Cash Potion', icon: 'potionWins', grant: { item: 'potionWins' } },
+  { weight: 20, label: 'x2 Strength Potion', icon: 'potionHealth', grant: { item: 'potionHealth' } },
   { weight: 15, label: 'Mystery Egg', icon: 'egg', grant: { egg: true } },
 ]
 
@@ -663,11 +696,11 @@ export const QUEST_TIERS = [
 ]
 export const QUEST_BONUS = { winsRolls: 15 }
 export const QUEST_TYPES = {
-  launch: { counter: 'launch', text: 'Launch {n} times', targets: [5, 12, 25] },
+  launch: { counter: 'launch', text: 'Spin and fly {n} times', targets: [5, 12, 25] },
   great: { counter: 'great', text: 'Get {n} GREAT or PERFECT launches', targets: [2, 5, 10] },
   perfect: { counter: 'perfect', text: 'Get {n} PERFECT launches', targets: [1, 3, 6] },
   combo: { counter: 'combo', mode: 'best', text: 'Hit a PERFECT combo of {n}', targets: [2, 3, 4] },
-  reps: { counter: 'rep', text: 'Do {n} pull-ups', targets: [40, 120, 300] },
+  reps: { counter: 'rep', text: 'Lift {n} reps', targets: [40, 120, 300] },
   meters: { counter: 'meters', text: 'Fly {n} m in total', scale: 'total', targets: [4, 10, 25] },
   far: { counter: 'far', mode: 'best', text: 'Fly {n} m in one launch', scale: 'best', targets: [0.6, 0.8, 0.95] },
   hatch: { counter: 'hatch', text: 'Hatch {n} pets', targets: [1, 3, 6] },
@@ -682,13 +715,13 @@ export const QUEST_TYPES = {
  * that much); after the last the guide is done.
  */
 export const TUTORIAL = [
-  { text: 'Hang from a pull-up bar to gain Power', event: 'train', target: 'pad0', health: 30 },
-  { text: 'Walk up to the launch posts, pull BACK, then let go!', event: 'roll', target: 'roll' },
-  { text: 'Buy the Rubber Band Arms with your Wins!', event: 'buyTire', target: 'tires' },
+  { text: 'Sit on a training bench to gain Strength', event: 'train', target: 'pad0', health: 30 },
+  { text: 'At the SPIN BAR press SPIN, then LAUNCH at the top!', event: 'roll', target: 'roll' },
+  { text: 'Buy the White Arms with your Cash!', event: 'buyTire', target: 'tires' },
 ]
 
 export const BADGES = {
-  firstRoll: { name: 'First Fling' },
+  firstRoll: { name: 'First Spin' },
   firstRebirth: { name: 'First Rebirth' },
   firstPet: { name: 'Pet Owner' },
   firstWall: { name: 'Explorer' },
@@ -713,11 +746,3 @@ export function armGrowth(tireId, level = 1, cap = 15) {
   const lvl = Math.min(1, Math.max(0, (level - 1) / Math.max(1, cap - 1)))
   return 0.08 + 0.92 * Math.min(1, upgrade * 0.7 + lvl * 0.3)
 }
-
-/**
- * The stretch bonus: every metre you walk back holding the launch posts (out of the most
- * anyone can, world MAX_PULL) flings you further and pays more - up to STRETCH_REACH more
- * distance and STRETCH_WINS more Wins at the full 50 m. Longer arms, further flights.
- */
-export const STRETCH_REACH = 0.5
-export const STRETCH_WINS = 0.5

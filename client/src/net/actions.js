@@ -45,9 +45,11 @@ export const actions = {
   claimQuestBonus: () => send('claimQuestBonus'),
   setSetting: (key, value) => send('setting', { key, value }),
   portal: () => send('portal'),
-  /** Picks up Palm Beach's Secret Star (the authority checks you're at it). */
+  /** Picks up the Secret Star (the authority checks you're at it). */
   findStar: () => send('findStar'),
-  /** Buys a shop item with Wins; see shop.js. */
+  /** Redeems a code from Settings; the answer comes back as a 'code' event. */
+  redeemCode: (code) => send('redeemCode', { code: String(code || '').slice(0, 24) }),
+  /** Buys a shop item with Cash; see shop.js. */
   purchase: (productId) => send('purchase', { productId }),
   /** A rewarded ad Boxity says was watched; the server verifies the token. */
   adReward: (placement, rewardToken) => send('adReward', { placement, rewardToken }),

@@ -22,7 +22,7 @@ import { venueOf } from '../sceneStyle'
  * decals over it: pitch.js, signs.js.)
  */
 
-const MAP = { minX: -64, maxX: 64, minZ: -44, maxZ: PLAZA.maxZ + 12 }
+const MAP = { minX: -68, maxX: 72, minZ: -44, maxZ: PLAZA.maxZ + 12 }
 const MAP_W = MAP.maxX - MAP.minX
 const MAP_H = MAP.maxZ - MAP.minZ
 
@@ -56,7 +56,7 @@ export function createGroundMap(maxTexture, world = 0) {
   const ctx = canvas.getContext('2d')
   const { rect, disc } = painter(ctx)
 
-  paintPark(rect, disc, v.beach ? PARKS.beach : PARKS.grass)
+  paintPark(rect, disc, v.beach ? PARKS.beach : v.palace ? PARKS.palace : PARKS.grass)
 
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
@@ -68,16 +68,25 @@ export function createGroundMap(maxTexture, world = 0) {
   return texture
 }
 
-/** The lobby floor: mint (or sand at Palm Beach) and a candy path down the middle (the mesas ring it). */
+/** The lobby floor: grass (or sand at Shipwreck Cove) and a tiled walkway down the middle (the cliffs ring it). */
 const PARKS = {
-  grass: { grass: ['#8fe3c0', '#9eeccb'], path: ['#ff6fae', '#ff86bc'], edge: '#ffffff', ring: '#c08cff', portal: '#a46cf0', yard: '#fff0d8' },
-  beach: { grass: ['#f2dca0', '#ead196'], path: ['#2fc8d8', '#48d6e4'], edge: '#ffffff', ring: '#e2bd7a', portal: '#16b8c4', yard: '#fbeed0' },
+  grass: { grass: ['#5cc84a', '#68d456'], path: ['#a99cf0', '#b7abf7'], edge: '#ffffff', ring: '#6a5cff', portal: '#4f86ff', yard: '#ece8ff' },
+  // The royal palace: a courtyard of pale flagstones in a big checker, a red carpet edged in gold.
+  palace: { grass: ['#eadfc6', '#ddcfb0'], checker: true, path: ['#c41e3a', '#b51a35'], edge: '#f2c230', ring: '#8f1426', portal: '#4f86ff', yard: '#f7f0df' },
+  // Shipwreck Cove: warm golden sand and a wooden boardwalk.
+  beach: { grass: ['#f2cb8a', '#eabf7a'], path: ['#c48a52', '#b47a44'], edge: '#8a5a32', ring: '#ff8a5a', portal: '#16b8c4', yard: '#fbe6c4' },
 }
 
 function paintPark(rect, disc, PARK) {
   // Grass all round, in 4 m bands like big studded tiles.
   rect(MAP, PARK.grass[0])
-  for (let z = MAP.minZ, k = 0; z < MAP.maxZ; z += 4, k += 1) rect({ minX: MAP.minX, maxX: MAP.maxX, minZ: z, maxZ: z + 4 }, PARK.grass[k % 2])
+  for (let z = MAP.minZ, k = 0; z < MAP.maxZ; z += 4, k += 1) {
+    if (!PARK.checker) {
+      rect({ minX: MAP.minX, maxX: MAP.maxX, minZ: z, maxZ: z + 4 }, PARK.grass[k % 2])
+      continue
+    }
+    for (let x = MAP.minX, j = 0; x < MAP.maxX; x += 4, j += 1) rect({ minX: x, maxX: x + 4, minZ: z, maxZ: z + 4 }, PARK.grass[(j + k) % 2])
+  }
   // The arm shop's tiled yard.
   rect(SHOP, PARK.yard)
   for (const p of PORTALS) {

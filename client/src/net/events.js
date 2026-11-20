@@ -72,7 +72,7 @@ export function handleServerEvent(type, payload) {
     case 'streak':
       // Played past midnight: the streak's next day starts now.
       sfx.wins()
-      game.showToast(`DAY ${payload.days} STREAK! x${payload.multiplier.toFixed(1)} Wins on every launch`)
+      game.showToast(`DAY ${payload.days} STREAK! x${payload.multiplier.toFixed(1)} Cash on every launch`)
       break
 
     case 'pack':
@@ -104,7 +104,7 @@ export function handleServerEvent(type, payload) {
       sfx.wins()
       sfx.levelUp()
       burst({ ...atPlayer(2), count: 70, palette: 'gold', speed: 10 })
-      game.showToast('SECRET STAR FOUND! x2 POWER FOREVER!')
+      game.showToast('SECRET STAR FOUND! x2 STRENGTH FOREVER!')
       break
     }
 
@@ -117,17 +117,29 @@ export function handleServerEvent(type, payload) {
       const world = WORLDS[payload.world]
       game.showToast(
         payload.world === 1
-          ? `WELCOME TO ${world.name.toUpperCase()}! x${world.wins} Wins on every launch!${payload.first ? ' A Secret Star is hidden here...' : ''}`
+          ? `WELCOME TO ${world.name.toUpperCase()}! x${world.wins} Cash on every launch!${payload.first ? ' A Secret Star is hidden here...' : ''}`
           : `Back in ${world.name}!`,
       )
       break
     }
 
+    case 'code':
+      // A code typed in Settings: what it gave, or why not.
+      if (payload.ok) {
+        sfx.buy()
+        burst({ ...atPlayer(2), count: 40, palette: 'gold', speed: 8 })
+        game.showToast(`CODE REDEEMED! ${payload.label}`)
+      } else {
+        sfx.weakHit()
+        game.showToast(payload.error || 'Invalid code')
+      }
+      break
+
     case 'reward':
       // A rewarded ad or a Gems purchase landed.
       sfx.buy()
       burst({ ...atPlayer(2), count: 40, palette: 'gold', speed: 8 })
-      game.showToast(`${payload.label}${payload.wins ? ` +${formatNumber(payload.wins)} Wins` : ''}!`)
+      game.showToast(`${payload.label}${payload.wins ? ` +$${formatNumber(payload.wins)}` : ''}!`)
       break
 
     default:

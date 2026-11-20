@@ -1,7 +1,7 @@
 import { EGGS, PADS, PETS, RARITIES, SHOP, TIRES, WORLD_PORTALS, WORLDS } from '@shared/balance'
 import { formatNumber } from '@shared/format'
 import { isPadUnlocked } from '@shared/logic'
-import { EGG_STANDS, FREE_REWARD, LAUNCH_STAND, padCenterZ, PORTALS, SPHINX_STAND, STRETCH_LANE, TABLE_X, TIRE_STANDS } from '@shared/world'
+import { EGG_STANDS, FREE_REWARD, LAUNCH_STAND, padCenterX, padCenterZ, PORTALS, SPHINX_STAND, SPIN_BAR, TABLE_DX, TIRE_STANDS } from '@shared/world'
 
 import { eggHeight } from '../world/eggs'
 import { BOARD_BOTTOM, BOARD_HEIGHT, PAD_THEMES } from '../world/structures'
@@ -29,7 +29,7 @@ export function padLabelSpec(index, unlocked, world = 0) {
   const pad = PADS[index]
   const theme = PAD_THEMES[index]
   const lines = [
-    { text: `x${formatNumber(pad.mult)} POWER`, size: 54, icon: 'heart', gradient: tint(theme.text) },
+    { text: `x${formatNumber(pad.mult)} STRENGTH`, size: 54, icon: 'heart', gradient: tint(theme.text) },
     { text: pad.name, size: 34, fill: '#ffffff' },
   ]
   if (unlocked) {
@@ -38,7 +38,7 @@ export function padLabelSpec(index, unlocked, world = 0) {
     lines.push({ text: `${WORLDS[pad.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.blue })
   } else if (pad.product) {
     lines.push({ text: pad.tag, size: 46, rainbow: true })
-    lines.push({ text: `${formatNumber(SHOP[pad.product].price)} Wins`, size: 42, icon: 'trophy', gradient: TEXT.gold })
+    lines.push({ text: `$${formatNumber(SHOP[pad.product].price)}`, size: 42, icon: 'trophy', gradient: TEXT.gold })
   } else {
     const word = pad.rebirths === 1 ? 'Rebirth' : 'Rebirths'
     lines.push({ text: `LOCKED: ${pad.rebirths} ${word}`, size: 44, icon: 'rebirth', gradient: TEXT.red })
@@ -50,12 +50,12 @@ export function padLabelSpec(index, unlocked, world = 0) {
 const padReserve = (index) => {
   const pad = PADS[index]
   const lines = [
-    { text: `x${formatNumber(pad.mult)} POWER`, size: 54, icon: 'heart' },
+    { text: `x${formatNumber(pad.mult)} STRENGTH`, size: 54, icon: 'heart' },
     { text: pad.name, size: 34 },
   ]
   if (pad.product) {
     lines.push({ text: pad.tag, size: 46 })
-    lines.push({ text: `${formatNumber(SHOP[pad.product].price)} Wins`, size: 42, icon: 'trophy' })
+    lines.push({ text: `$${formatNumber(SHOP[pad.product].price)}`, size: 42, icon: 'trophy' })
   } else {
     lines.push({ text: 'LOCKED: 88 Rebirths', size: 44, icon: 'rebirth' })
   }
@@ -68,7 +68,7 @@ export function padLabels(profile) {
     // Well in front of the treadmill's backboard (structures.js), centred on it: the label
     // turns to face the camera and is wider than the board, so any nearer and its far half
     // swings behind the board seen from an angle.
-    position: [TABLE_X - 2.2, BOARD_BOTTOM + BOARD_HEIGHT / 2, padCenterZ(i)],
+    position: [padCenterX(i) + TABLE_DX - 2.2, BOARD_BOTTOM + BOARD_HEIGHT / 2, padCenterZ(i)],
     spec: padLabelSpec(i, isPadUnlocked(profile, i), profile.world || 0),
     reserve: padReserve(i),
     fade: 150,
@@ -109,9 +109,9 @@ export function standLabelSpec(index, state) {
   const last =
     state === 'equipped' || state === 'owned'
       ? rarityLine(tire)
-      : { text: `${formatNumber(tire.cost)} Wins`, size: 40, icon: 'trophy', gradient: state === 'locked' ? TEXT.red : TEXT.price }
+      : { text: `$${formatNumber(tire.cost)}`, size: 40, icon: 'trophy', gradient: state === 'locked' ? TEXT.red : TEXT.price }
   return {
-    lines: [tag, { text: tire.name, size: 46, fill: '#ffffff' }, { text: `+${formatNumber(tire.power)} Power`, size: 40, icon: 'heart', gradient: TEXT.gold }, last],
+    lines: [tag, { text: tire.name, size: 46, fill: '#ffffff' }, { text: `+${formatNumber(tire.power)} Strength`, size: 40, icon: 'heart', gradient: TEXT.gold }, last],
     pxPerUnit: 70,
   }
 }
@@ -121,8 +121,8 @@ const standReserve = (index) => ({
   lines: [
     { text: 'CAN BUY!', size: 36 },
     { text: TIRES[index].name, size: 46 },
-    { text: `+${formatNumber(TIRES[index].power)} Power`, size: 40, icon: 'heart' },
-    { text: `${formatNumber(TIRES[index].cost)} Wins`, size: 40, icon: 'trophy' },
+    { text: `+${formatNumber(TIRES[index].power)} Strength`, size: 40, icon: 'heart' },
+    { text: `$${formatNumber(TIRES[index].cost)}`, size: 40, icon: 'trophy' },
   ],
 })
 
@@ -150,11 +150,11 @@ export function eggLabels(profile) {
           { text: `${egg.name} Egg`, size: 54, gradient: BIG_EGG_TEXT[stand.eggId] || TEXT.red },
           elsewhere
             ? { text: `${WORLDS[egg.world].name.toUpperCase()} ONLY`, size: 44, icon: 'portal', gradient: TEXT.blue }
-            : { text: `${formatNumber(egg.cost.wins)} Wins`, size: 46, icon: 'trophy', gradient: TEXT.gold },
+            : { text: `$${formatNumber(egg.cost.wins)}`, size: 46, icon: 'trophy', gradient: TEXT.gold },
         ]
       : [
           { text: `${egg.name} Egg`, size: 50, fill: '#ffffff' },
-          { text: `${formatNumber(egg.cost.wins)} Wins`, size: 44, icon: 'trophy', gradient: TEXT.gold },
+          { text: `$${formatNumber(egg.cost.wins)}`, size: 44, icon: 'trophy', gradient: TEXT.gold },
         ]
     return {
       id: `egg-${stand.eggId}`,
@@ -170,7 +170,7 @@ export function sphinxLabelSpec(stock) {
   const mult = PETS.sphinx.mult
   return {
     lines: [
-      { text: `${formatNumber(SHOP.sphinx.price)} Wins`, size: 46, icon: 'trophy', gradient: TEXT.gold },
+      { text: `$${formatNumber(SHOP.sphinx.price)}`, size: 46, icon: 'trophy', gradient: TEXT.gold },
       { text: 'BEST IN GAME', size: 56, gradient: TEXT.red },
       { text: 'Sphinx', size: 76, fill: '#ffffff' },
       { text: `${formatNumber(mult * 100 - 100)}% BETTER`, size: 54, rainbow: true },
@@ -196,8 +196,8 @@ const scoreboardLabel = () => ({
   position: [SCOREBOARD.x, SCOREBOARD.y + 0.8 + SCOREBOARD.height / 2, SCOREBOARD.z - 1.5],
   spec: {
     lines: [
-      { text: '+1 ARM LENGTH', size: 100, gradient: TEXT.gold },
-      { text: 'STRETCH - FLY FAR - REBIRTH', size: 44, gradient: TEXT.white },
+      { text: '+1 SPIN TO FLY', size: 100, gradient: TEXT.gold },
+      { text: 'SPIN - FLY FAR - REBIRTH', size: 44, gradient: TEXT.white },
     ],
     pxPerUnit: 34,
   },
@@ -227,8 +227,8 @@ const portalLabel = (profile) => (portal) => {
     : [
         { text: WORLDS[1].name.toUpperCase(), size: 60, gradient: TEXT.blue },
         open
-          ? { text: `x${WORLDS[1].wins} Wins!`, size: 46, icon: 'trophy', gradient: TEXT.gold }
-          : { text: `${need.rebirths} Rebirths + ${formatNumber(need.wins)} Wins`, size: 40, icon: 'rebirth', gradient: TEXT.white },
+          ? { text: `x${WORLDS[1].wins} Cash!`, size: 46, icon: 'trophy', gradient: TEXT.gold }
+          : { text: `${need.rebirths} Rebirths + $${formatNumber(need.wins)}`, size: 40, icon: 'rebirth', gradient: TEXT.white },
       ]
   return {
     id: `portal-${portal.id}`,
@@ -238,21 +238,21 @@ const portalLabel = (profile) => (portal) => {
     reserve: {
       lines: [
         { text: WORLDS[0].name.toUpperCase(), size: 60 },
-        { text: `${need.rebirths} Rebirths + ${formatNumber(need.wins)} Wins`, size: 46, icon: 'rebirth' },
+        { text: `${need.rebirths} Rebirths + $${formatNumber(need.wins)}`, size: 46, icon: 'rebirth' },
       ],
     },
     fade: 140,
   }
 }
 
-/** Over the far end of the stretch lane: what walking further back gets you. */
-const laneLabel = () => ({
-  id: 'stretch-lane',
-  position: [LAUNCH_STAND.x, 4.4, STRETCH_LANE.maxZ],
+/** Over the spin bar: what it's for. */
+const spinBarLabel = () => ({
+  id: 'spin-bar',
+  position: [LAUNCH_STAND.x, SPIN_BAR.y + 2.6, LAUNCH_STAND.z],
   spec: {
     lines: [
-      { text: 'STRETCH LANE', size: 60, gradient: TEXT.gold },
-      { text: 'Longer arms = FLY FARTHER!', size: 40, gradient: TEXT.white },
+      { text: 'SPIN BAR', size: 64, gradient: TEXT.gold },
+      { text: 'Press SPIN - then LAUNCH!', size: 40, gradient: TEXT.white },
     ],
     pxPerUnit: 52,
   },
@@ -261,5 +261,5 @@ const laneLabel = () => ({
 
 /** Every label in the lobby. */
 export function lobbyLabels(profile, { sphinxStock = 0 } = {}) {
-  return [...padLabels(profile), ...standLabels(profile), ...eggLabels(profile), sphinxLabel(sphinxStock), scoreboardLabel(), freeRewardLabel(), laneLabel(), ...PORTALS.map(portalLabel(profile))]
+  return [...padLabels(profile), ...standLabels(profile), ...eggLabels(profile), sphinxLabel(sphinxStock), scoreboardLabel(), freeRewardLabel(), spinBarLabel(), ...PORTALS.map(portalLabel(profile))]
 }

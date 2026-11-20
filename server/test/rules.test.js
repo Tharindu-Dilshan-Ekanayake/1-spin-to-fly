@@ -42,11 +42,13 @@ import {
   rollReach,
   skipRebirth,
   usePortal,
+  nextTire,
 } from '../../shared/logic.js'
+import { rareThrowById, rollRareThrow, SPIN_RISE, spinMeterAt } from '../../shared/balance.js'
 import { PlayerSession } from '../../shared/session.js'
-import { LAUNCH_STAND, MAX_PULL, maxPullFor, PAD_X, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, STAR } from '../../shared/world.js'
+import { barGrabX, inRollZone as onLaunchPad, LAUNCH_POSTS, LAUNCH_STAND, nearLaunchPosts, padCenterX, padCenterZ, PORTALS, ROLL_ZONE, SPAWN, SPIN_BAR, STAR } from '../../shared/world.js'
 
-const onPad = (i) => ({ x: PAD_X, y: 0.5, z: padCenterZ(i) })
+const onPad = (i) => ({ x: padCenterX(i), y: 0.5, z: padCenterZ(i) })
 const inRollZone = () => ({ x: 0, y: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 })
 
 /** A session for a fresh profile, recording every event it emits. */
@@ -531,30 +533,83 @@ test("Palm Beach's Secret Star: found once, there only, for x2 Power everywhere"
   assert.equal(far.count('star'), 0)
 })
 
-// --- The stretch lane ------------------------------------------------------------
+// --- The spin bar and rare throws -------------------------------------------------
 
-test('walking further back down the stretch lane flings you further and pays more, up to your arms reach', () => {
-  const launchFrom = (back, tire) => {
+test('you launch from right under the spin bar, and the meter runs up and down', () => {
+  assert.ok(onLaunchPad(LAUNCH_STAND.x, LAUNCH_STAND.z))
+  assert.equal(spinMeterAt(0), 0)
+  assert.equal(spinMeterAt(SPIN_RISE), 1)
+  assert.ok(Math.abs(spinMeterAt(SPIN_RISE * 1.5) - 0.5) < 1e-9)
+  assert.ok(Math.abs(spinMeterAt(SPIN_RISE * 2)) < 1e-9)
+  const profile = createProfile('a', 'A')
+  profile.health = 5000
+  const { session, events } = makeSession({ x: LAUNCH_STAND.x, y: 0, z: LAUNCH_STAND.z }, profile)
+  session.handle('roll', { accuracy: 0.95 }, 1000)
+  const roll = events.find((e) => e.type === 'roll').payload
+  assert.equal(roll.hit, 'perfect')
+  assert.equal(roll.rare, null)
+})
+
+test('rare throws: rarest first, better timing better odds', () => {
+  assert.equal(rollRareThrow(() => 0.001).id, 'mythic')
+  assert.equal(rollRareThrow(() => 0.01).id, 'secret')
+  assert.equal(rollRareThrow(() => 0.05).id, 'lucky')
+  assert.equal(rollRareThrow(() => 0.5), null)
+  assert.equal(rollRareThrow(() => 0.12), null)
+  assert.equal(rollRareThrow(() => 0.12, 'perfect').id, 'lucky')
+})
+
+test('a rare throw multiplies the distance and the Cash, and the client hears which', () => {
+  const launch = (rand) => {
     const profile = createProfile('a', 'A')
     profile.health = 5000
-    if (tire) {
-      profile.ownedTires.push(tire)
-      profile.equippedTire = tire
-    }
-    const { session, events } = makeSession({ x: LAUNCH_STAND.x, y: 0, z: LAUNCH_STAND.z + back }, profile)
+    const events = []
+    const session = new PlayerSession(profile, { now: 0, rand, emit: (type, payload) => events.push({ type, payload }), getPosition: () => ({ x: LAUNCH_STAND.x, y: 0, z: LAUNCH_STAND.z }) })
     session.handle('roll', { accuracy: 0.5 }, 1000)
     return events.find((e) => e.type === 'roll').payload
   }
-  const stood = launchFrom(0)
-  const short = launchFrom(3)
-  assert.equal(stood.stretch, 0)
-  assert.ok(short.distance > stood.distance && short.wins >= stood.wins)
-  // Starter arms only reach a few metres: walking the whole lane counts no further.
-  const cheat = launchFrom(MAX_PULL)
-  assert.ok(cheat.stretch <= maxPullFor('bicycle', 1, 15) + 0.6) // (+0.5 lag slack, rounded)
-  // The best arms reach (nearly) the whole 40 m - and fly much further for it.
-  const best = TIRES[TIRES.length - 1].id
-  const far = launchFrom(MAX_PULL, best)
-  assert.ok(far.stretch > cheat.stretch * 3)
-  assert.ok(far.distance > stood.distance * 1.3)
+  const plain = launch(() => 0.99)
+  const mythic = launch(() => 0.001)
+  assert.equal(mythic.rare, 'mythic')
+  const mult = rareThrowById('mythic').mult
+  assert.ok(Math.abs(mythic.distance - plain.distance * mult) < 1)
+  assert.ok(Math.abs(mythic.wins / plain.wins - mult) < 0.05 * mult)
+})
+
+test('codes: any case, each once per player, unknown ones refused', () => {
+  const { session, profile, events } = makeSession({ x: 0, y: 0, z: 0 })
+  const before = profile.wins
+  session.handle('redeemCode', { code: ' fly ' }, 0)
+  assert.equal(profile.wins, before + 250)
+  assert.deepEqual(events.filter((e) => e.type === 'code').map((e) => e.payload.ok), [true])
+  session.codeAt = 0
+  session.handle('redeemCode', { code: 'FLY' }, 0)
+  assert.equal(profile.wins, before + 250, 'not twice')
+  session.codeAt = 0
+  session.handle('redeemCode', { code: 'NOPE' }, 0)
+  assert.deepEqual(events.filter((e) => e.type === 'code').map((e) => e.payload.ok), [true, false, false])
+  assert.deepEqual(normalizeProfile(JSON.parse(JSON.stringify(profile)), 'a', 'A').codes, ['FLY'], 'saved')
+})
+
+test('the spin bar is long: 16 players can grab it side by side, and a launch from its end counts', () => {
+  assert.ok(SPIN_BAR.reach * 2 >= 16 * 1.2, 'room for a full server along it')
+  for (const x of [-SPIN_BAR.reach, 0, SPIN_BAR.reach]) {
+    assert.ok(nearLaunchPosts(x, LAUNCH_STAND.z))
+    assert.ok(onLaunchPad(x, LAUNCH_STAND.z))
+  }
+  assert.equal(barGrabX(99), LAUNCH_POSTS.x + SPIN_BAR.reach)
+  const profile = createProfile('a', 'A')
+  profile.health = 5000
+  const { session, events } = makeSession({ x: SPIN_BAR.reach, y: 0, z: LAUNCH_STAND.z }, profile)
+  session.handle('roll', { accuracy: 0.5 }, 1000)
+  assert.equal(events.filter((e) => e.type === 'roll').length, 1)
+})
+
+test('the next arms are the ones after your best pair, not a cheaper pair you skipped', () => {
+  const profile = createProfile('a', 'A')
+  assert.equal(nextTire(profile).id, TIRES[1].id)
+  profile.ownedTires = [TIRES[3].id, TIRES[5].id]
+  assert.equal(nextTire(profile).id, TIRES[6].id)
+  profile.ownedTires = TIRES.map((t) => t.id)
+  assert.equal(nextTire(profile), null)
 })

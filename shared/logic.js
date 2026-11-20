@@ -1,6 +1,7 @@
 import {
   AD_REWARDS,
   BADGES,
+  CODES,
   DAILY_INTERVAL_MS,
   dayNumber,
   DAILY_REWARDS,
@@ -32,8 +33,6 @@ import {
   rollDuration,
   SHOP,
   streakMultiplier,
-  STRETCH_REACH,
-  STRETCH_WINS,
   TIRES,
   TRAIN_INTERVAL,
   TROPHY_FIRST,
@@ -82,6 +81,8 @@ export function createProfile(id, name) {
     freeRewardClaimed: false,
     tutorialStep: 0,
     badges: [],
+    /** Codes already redeemed (balance CODES ids). */
+    codes: [],
     stats: {
       rolls: 0,
       trains: 0,
@@ -150,6 +151,7 @@ export function normalizeProfile(raw, id, name) {
   p.stats.bestZone2 = Math.min(ZONES.length - 1, Math.max(0, Math.floor(p.stats.bestZone2) || 0))
   p.world2Unlocked = raw.world2Unlocked === true
   p.secretStars = { world2: raw.secretStars?.world2 === true }
+  p.codes = Array.isArray(raw.codes) ? [...new Set(raw.codes.filter((c) => typeof c === 'string' && CODES[c]))] : []
   p.world = p.world2Unlocked && raw.world === 1 ? 1 : 0
   // Levels follow from Health; recompute rather than trust a stored one.
   p.level = levelFor(p.health, p.rebirths)
@@ -273,7 +275,7 @@ export function padGain(profile, index, now) {
 // --- Training, levels, rebirth ------------------------------------------------------
 
 /**
- * Banks a natural gain (pad, rolling or walking) and the levels it reaches. Once you're
+ * Banks a natural gain (pad or flying) and the levels it reaches. Once you're
  * at max level natural gains stop: rebirth to keep going. Returns what was really added.
  */
 function addHealth(profile, gain) {
@@ -301,8 +303,6 @@ export function applyRollTick(profile, now) {
   return { ok: true, ...addHealth(profile, baseGain(profile, now)) }
 }
 
-/** One step's worth of walking round the lobby: the same gain as a roll tick. */
-export const applyWalkStep = applyRollTick
 
 /** Rebirth: +1 rebirth; Health and levels reset (Wins, tires and pets stay). */
 export function applyRebirth(profile) {
@@ -402,14 +402,15 @@ export const rollWinsAt = (health, world = 0) => baseRollWins(rollOutcome(health
  * would multiply a PERFECT kick's Wins dozens of times over late in the game. Without
  * the meter (Auto Kick) the kick is a plain x1 kick.
  */
-export function applyRoll(profile, now, accuracy = null, bonus = 1, stretch = 0) {
-  // `stretch` (0-1): how much of the 40 m stretch lane you'd walked back - further and richer.
-  const pulled = Math.min(1, Math.max(0, Number(stretch) || 0))
-  const outcome = rollOutcome(profile.health, hitReach(accuracy) * (1 + STRETCH_REACH * pulled))
+export function applyRoll(profile, now, accuracy = null, bonus = 1, rare = null) {
+  // `rare`: a LUCKY / SECRET / MYTHIC throw (balance RARE_THROWS) the caller rolled, or
+  // null - it multiplies the distance and the Cash alike.
+  const rareMult = rare?.mult > 1 ? rare.mult : 1
+  const outcome = rollOutcome(profile.health, hitReach(accuracy) * rareMult)
   const distance = Math.round(outcome.distance * 10) / 10
   const grade = hitGrade(accuracy)
   // `bonus`: the session's own multipliers (a PERFECT combo, friends in the server).
-  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * (1 + STRETCH_WINS * pulled)
+  const multiplier = winsMultiplier(profile, now) * (grade ? grade.bonus : 1) * Math.max(1, Number(bonus) || 1) * rareMult
   const world = profile.world
   const worth = Math.round(rollReach(profile.health) * 10) / 10
   const wins = Math.max(1, Math.round(baseRollWins(worth, world) * multiplier))
@@ -440,6 +441,7 @@ export function applyRoll(profile, now, accuracy = null, bonus = 1, stretch = 0)
     broken: outcome.broken,
     multiplier,
     hit: grade ? grade.id : null,
+    rare: rareMult > 1 ? rare.id : null,
     best,
     duration,
     cooldown: duration + ROLL_RECOVERY,
@@ -500,7 +502,7 @@ export function healthPacks(profile) {
 export function buyHealthPack(profile, index) {
   const pack = healthPacks(profile)[index]
   if (!pack) return { ok: false, error: 'Unknown pack' }
-  if (profile.wins < pack.price) return { ok: false, error: 'Not enough Wins!' }
+  if (profile.wins < pack.price) return { ok: false, error: 'Not enough Cash!' }
   profile.wins -= pack.price
   profile.health = tidy(profile.health + pack.amount)
   profile.stats.bestHealth = Math.max(profile.stats.bestHealth, profile.health)
@@ -514,7 +516,7 @@ export const rebirthSkipPrice = (profile) => niceRound(Math.max(20, maxRollWins(
 export function skipRebirth(profile) {
   if (isMaxLevel(profile)) return applyRebirth(profile)
   const price = rebirthSkipPrice(profile)
-  if (profile.wins < price) return { ok: false, error: 'Not enough Wins!' }
+  if (profile.wins < price) return { ok: false, error: 'Not enough Cash!' }
   profile.wins -= price
   profile.level = levelCap(profile.rebirths)
   return applyRebirth(profile)
@@ -534,7 +536,7 @@ export function usePortal(profile) {
   }
   const { wins: need, rebirths } = WORLD_PORTALS.world2
   if (!profile.world2Unlocked && profile.rebirths < rebirths) return { ok: false, error: `Need ${rebirths} Rebirths`, need, rebirths }
-  if (!profile.world2Unlocked && profile.wins < need) return { ok: false, error: `Need ${need} Wins`, need, rebirths }
+  if (!profile.world2Unlocked && profile.wins < need) return { ok: false, error: `Need $${need}`, need, rebirths }
   const first = !profile.world2Unlocked
   profile.world2Unlocked = true
   profile.world = 1
@@ -551,7 +553,7 @@ export function buyTire(profile, tireId) {
   if (previous && !profile.ownedTires.includes(previous.id)) {
     return { ok: false, error: `Buy the ${previous.name} first!` }
   }
-  if (profile.wins < tire.cost) return { ok: false, error: 'Not enough Wins!' }
+  if (profile.wins < tire.cost) return { ok: false, error: 'Not enough Cash!' }
   profile.wins -= tire.cost
   profile.ownedTires.push(tireId)
   profile.equippedTire = tireId
@@ -566,7 +568,9 @@ export function equipTire(profile, tireId) {
 
 /** The next tire in the showroom you don't have yet, or null. */
 export function nextTire(profile) {
-  return TIRES.find((t) => !profile.ownedTires.includes(t.id)) || null
+  let best = -1
+  for (const id of profile.ownedTires) best = Math.max(best, tireIndex(id))
+  return TIRES[best + 1] || null
 }
 
 // --- Pets --------------------------------------------------------------------------
@@ -598,12 +602,12 @@ export function hatchEgg(profile, eggId, count = 1, { paid = 'wins', rand = Math
   const egg = EGGS[eggId]
   if (!egg) return { ok: false, error: 'Unknown egg' }
   // A world's own egg hatches in that world only (eggs from rewards included).
-  if (egg.world !== undefined && (profile.world || 0) !== egg.world) return { ok: false, error: 'Hatches in Palm Beach only!' }
+  if (egg.world !== undefined && (profile.world || 0) !== egg.world) return { ok: false, error: 'Hatches in Shipwreck Cove only!' }
   if (profile.pets.length + count > MAX_PET_INVENTORY) return { ok: false, error: 'Pet inventory full!' }
   if (paid === 'wins') {
     if (!egg.cost.wins) return { ok: false, error: 'This egg is premium only' }
     const price = egg.cost.wins * count
-    if (profile.wins < price) return { ok: false, error: 'Not enough Wins!' }
+    if (profile.wins < price) return { ok: false, error: 'Not enough Cash!' }
     profile.wins -= price
   } else if (paid === 'item') {
     const itemId = Object.keys(ITEMS).find((k) => ITEMS[k].kind === 'egg' && ITEMS[k].egg === eggId)
@@ -740,6 +744,19 @@ export function claimPlaytime(profile, session, index, now, opts) {
   return { ...result, index, label: PLAYTIME_REWARDS[index].label }
 }
 
+/** Redeems code `text` (any case, spaces ignored): once per player, from balance CODES. */
+export function redeemCode(profile, text, opts) {
+  const code = String(text || '')
+    .replace(/\s+/g, '')
+    .toUpperCase()
+    .slice(0, 24)
+  const entry = CODES[code]
+  if (!entry) return { ok: false, error: 'Invalid code' }
+  if (profile.codes.includes(code)) return { ok: false, error: 'Code already redeemed' }
+  profile.codes.push(code)
+  return { ...applyGrant(profile, entry.grant, opts), code, label: entry.label }
+}
+
 export function claimFreeReward(profile, session, opts) {
   if (session.freeRewardTaken) return { ok: false, error: 'Already claimed this session' }
   session.freeRewardTaken = true
@@ -755,7 +772,7 @@ export function buyShopItem(profile, productId, opts = {}) {
   const item = SHOP[productId]
   if (!item) return { ok: false, error: 'Unknown item' }
   if (item.kind === 'pass' && profile.passes[productId]) return { ok: false, error: 'Already owned' }
-  if (profile.wins < item.price) return { ok: false, error: 'Not enough Wins!' }
+  if (profile.wins < item.price) return { ok: false, error: 'Not enough Cash!' }
   if (item.kind === 'pass') {
     profile.wins -= item.price
     profile.passes[productId] = true

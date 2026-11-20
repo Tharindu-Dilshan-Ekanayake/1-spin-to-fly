@@ -299,58 +299,71 @@ function treadmillStop() {
   bar = null
 }
 
-// --- The stretch: rubber creaking as you pull back on the launch posts ---------------
+// --- The spin: the whoosh of whirling round the spin bar -----------------------------
 
 let stretch = null
 let stretchSetAt = 0
 
 /**
- * Holding LAUNCH: a taut rubber creak that climbs in pitch the further back you pull and,
- * once it's full, trembles with every twang. Moved by stretchSet, stopped by stretchStop.
+ * On the spin bar: rushing air that whooms once every time you go round (its loudness
+ * swells at the spin's own rate), brighter and faster the quicker you whirl, over a low
+ * hum that climbs with the meter. Moved by stretchSet, stopped by stretchStop. (The
+ * names are the template's.)
  */
 function stretchStart() {
-  if (!ctx || stretch || silent() || ctx.state !== 'running') return
+  if (!ctx || stretch || silent() || ctx.state !== 'running' || !noiseBuffer) return
   const t = ctx.currentTime
-  const osc = ctx.createOscillator()
-  osc.type = 'sawtooth'
-  osc.frequency.value = 70
+  const src = ctx.createBufferSource()
+  src.buffer = noiseBuffer
+  src.loop = true
   const filter = ctx.createBiquadFilter()
   filter.type = 'bandpass'
-  filter.frequency.value = 520
-  filter.Q.value = 3
+  filter.frequency.value = 500
+  filter.Q.value = 1.4
   const gain = ctx.createGain()
   gain.gain.setValueAtTime(0.0001, t)
-  gain.gain.setTargetAtTime(0.03, t, 0.05)
-  // The creak: the rubber's loudness fluttering fast.
+  gain.gain.setTargetAtTime(0.05, t, 0.08)
+  // One whoom a turn: the loudness swelling at the spin's rate.
   const lfo = ctx.createOscillator()
-  lfo.frequency.value = 14
+  lfo.frequency.value = 1
   const depth = ctx.createGain()
-  depth.gain.value = 0.018
+  depth.gain.value = 0.045
   lfo.connect(depth).connect(gain.gain)
-  osc.connect(filter).connect(gain).connect(master)
-  osc.start(t)
+  src.connect(filter).connect(gain).connect(master)
+  // The hum under it.
+  const osc = ctx.createOscillator()
+  osc.type = 'triangle'
+  osc.frequency.value = 90
+  const hum = ctx.createGain()
+  hum.gain.value = 0.018
+  osc.connect(hum).connect(master)
+  src.start(t)
   lfo.start(t)
-  stretch = { osc, filter, gain, lfo }
+  osc.start(t)
+  stretch = { src, osc, filter, gain, hum, lfo }
 }
 
-/** `charge` 0-1, the stretch meter; `full` once it twangs. Called every frame. */
-function stretchSet(charge, full = false) {
+/** `charge` 0-1, the spin meter; `rate` how fast you whirl (radians a second). Called every frame. */
+function stretchSet(charge, rate = 0) {
   if (!stretch) return
   const now = performance.now()
   if (now - stretchSetAt < 40) return
   stretchSetAt = now
   const t = ctx.currentTime
-  stretch.osc.frequency.setTargetAtTime(70 + charge * 200, t, 0.03)
-  stretch.filter.frequency.setTargetAtTime(480 + charge * 1500, t, 0.04)
-  stretch.lfo.frequency.setTargetAtTime(full ? 32 : 12 + charge * 10, t, 0.05)
+  stretch.lfo.frequency.setTargetAtTime(Math.max(0.5, rate / (Math.PI * 2)), t, 0.05)
+  stretch.filter.frequency.setTargetAtTime(380 + charge * 1600, t, 0.05)
+  stretch.osc.frequency.setTargetAtTime(80 + charge * 160, t, 0.05)
 }
 
 function stretchStop() {
   if (!stretch) return
-  const { osc, gain, lfo } = stretch
+  const { src, osc, gain, hum, lfo } = stretch
   stretch = null
   const t = ctx.currentTime
-  gain.gain.setTargetAtTime(0.0001, t, 0.03)
+  gain.gain.cancelScheduledValues(t)
+  gain.gain.setTargetAtTime(0.0001, t, 0.04)
+  hum.gain.setTargetAtTime(0.0001, t, 0.04)
+  src.stop(t + 0.3)
   osc.stop(t + 0.3)
   lfo.stop(t + 0.3)
 }
@@ -461,13 +474,13 @@ export const sfx = {
     bell(1319, { at: 0.2, volume: 0.05, decay: 0.3 })
   },
   /**
-   * Letting go of the stretch (`power` 0-1, how far back you'd pulled): the rubber's big
-   * twang dropping in pitch, a slap, and the rush of being slung forward.
+   * Letting go of the spin bar (`power` 0-1): a rising whip-crack swoosh, a clang off the
+   * steel, and the rush of being flung forward.
    */
   rubberSnap(power = 1) {
     if (!ready('rubberSnap', 250)) return
-    tone(520 + 300 * power, { type: 'triangle', duration: 0.32, volume: 0.17, slideTo: 130 })
-    tone(260 + 120 * power, { type: 'sawtooth', duration: 0.14, volume: 0.05, slideTo: 90 })
+    tone(180, { type: 'triangle', duration: 0.32, volume: 0.15, slideTo: 520 + 300 * power })
+    bell(988, { volume: 0.05, decay: 0.25 })
     noise({ duration: 0.05, volume: 0.25, from: 2400, to: 900, q: 1.2 })
     noise({ at: 0.06, duration: 0.4, volume: 0.1 * (0.5 + power * 0.5), from: 300, to: 2600, q: 0.7 })
   },

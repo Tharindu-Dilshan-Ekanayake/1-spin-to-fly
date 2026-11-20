@@ -3,6 +3,7 @@ import { GEM_PRODUCTS } from '@shared/balance'
 import { actions, send } from '../net/actions'
 import { currentRoomId, isOnline } from '../net/connection'
 import { getGame } from '../store/game'
+import { trackScreenAds } from '../ui/adSafeZone'
 import { getSDK, safeCall } from './sdk'
 import { getBloxityState, useBloxityStore } from './store'
 
@@ -201,13 +202,15 @@ export function setScreen(type) {
   const ads = getSDK()?.ads
   if (typeof ads?.screen !== 'function') return
   screenType = type
-  safeCall(ads.screen.bind(ads), type)
+  // Popups keep clear of the panel screen's ads while they're up (ui/adSafeZone.js).
+  trackScreenAds(type, safeCall(ads.screen.bind(ads), type) || null)
 }
 
 /** Takes Boxity's screen ads down (teardown). */
 export function hideScreen() {
   if (!screenType) return
   screenType = null
+  trackScreenAds(null, null)
   const ads = getSDK()?.ads
   safeCall(ads?.hideScreen?.bind(ads))
 }

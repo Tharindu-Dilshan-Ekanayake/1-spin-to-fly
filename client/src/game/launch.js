@@ -1,63 +1,75 @@
-import { twangAt } from '@shared/balance'
+import { spinMeterAt, spinRate } from '@shared/balance'
 
 /**
- * Your stretch on the launch posts, before the authority hears about it. Press LAUNCH by
- * the posts and you grab them (`gripping`); walking back - the player controller does the
- * walking (Player.jsx), with your own joystick or keys - stretches your arms, and the
- * meter is how far back you've got, out of `max` (how far your arms reach); at full
- * stretch the rubber twangs (shared/balance.js twangAt). Press LET GO and the launch is
- * sent (net/actions.roll); the pose holds until the server's answer starts it
- * (roll/rollControl.beginRoll). Plain module state, written by the LAUNCH button and the
- * player and read every frame by the camera and the avatar - never React state, never
- * per-frame network traffic.
+ * Your spin on the SPIN BAR, before the authority hears about it. Walk under the bar (or
+ * press SPIN by it) and you jump up and grab it (`gripping`), and start whirling round it.
+ * The spin meter's marker runs up and down (shared/balance.js spinMeterAt) and the higher
+ * it is the faster you spin; TAP TO FLY lets go and sends the launch (net/actions.roll)
+ * graded on where the marker was. You keep whirling until the server's answer starts the
+ * launch (roll/rollControl.beginRoll), which carries on from exactly this angle and speed.
+ *
+ * Plain module state, written by the HUD and the player and read every frame by the
+ * camera and the avatar - never React state, never per-frame network traffic.
+ *
+ * The angle runs DOWN: the feet swing forward under the bar, up in front, over the top
+ * and down behind - the way that flings you off the front, feet first.
  */
 export const launch = {
-  /** Holding the posts (walking back, or standing stretched). */
+  /** On the bar, spinning, the meter running. */
   gripping: false,
-  /** Walking back by itself (Auto Launch). */
+  /** Spinning by itself (Auto Launch): lets go at the top by itself. */
   auto: false,
-  /** Set when you grab: the player moves you onto the stand spot on its next frame. */
+  /** Set when you grab: the player moves you under the bar on its next frame. */
   snap: false,
-  /** The meter now (0-1), and whether you're at full stretch (the rubber's twanging). */
+  /** The meter now (0-1), and performance.now() you grabbed the bar. */
   charge: 0,
-  full: false,
-  /** performance.now() you reached full stretch. */
-  fullSince: 0,
+  grabbedAt: 0,
+  /** Your angle round the bar (radians; 0 hanging straight down) and how fast it turns. */
+  spin: 0,
+  rate: 0,
   /** Let go and waiting for the authority: when. */
   released: false,
   releasedAt: 0,
-  /** Metres you are behind the stand spot (the player writes it), and the most you can be. */
-  back: 0,
-  max: 1,
+  lastNow: 0,
 }
 
-/** No answer this long after letting go (off the pad, busy): let the stretch go. */
+/** No answer this long after letting go (off the pad, busy): drop off the bar. */
 const RELEASE_TIMEOUT_MS = 1500
+/** The first swings up from hanging still take this long to reach the meter's pace. */
+const WIND_UP_S = 0.5
+/** How quickly the spin follows the meter (1/s). */
+const RATE_FOLLOW = 7
 
-/** Grabs the posts (`auto`: and walks back by itself). */
+/** Grabs the bar (`auto`: and lets go at the top by itself). */
 export function grab(auto = false) {
+  const now = performance.now()
   launch.gripping = true
   launch.auto = auto
   launch.snap = true
   launch.released = false
   launch.charge = 0
-  launch.full = false
-  launch.back = 0
+  launch.grabbedAt = now
+  launch.spin = 0
+  launch.rate = 0
+  launch.lastNow = now
 }
 
 /**
- * The meter for being `back` metres behind the stand, out of `max`, at `now`. Called
- * every frame by the player while gripping. Returns the meter (0-1).
+ * Moves the meter and the spin on to `now`. Called every frame by the player while on the
+ * bar (and while let go, until the launch takes over). Returns the meter (0-1).
  */
-export function updatePull(now, back, max) {
-  launch.back = back
-  launch.max = max
+export function updateSpin(now) {
   if (launch.released && now - launch.releasedAt > RELEASE_TIMEOUT_MS) cancelPull()
-  if (!launch.gripping) return launch.charge
-  const full = back >= max - 0.02
-  if (full && !launch.full) launch.fullSince = now
-  launch.full = full
-  launch.charge = full ? twangAt((now - launch.fullSince) / 1000) : Math.max(0, back / max)
+  if (!launch.gripping && !launch.released) return 0
+  const dt = Math.min(0.05, Math.max(0, (now - launch.lastNow) / 1000))
+  launch.lastNow = now
+  const held = (now - launch.grabbedAt) / 1000
+  if (launch.gripping) launch.charge = spinMeterAt(held)
+  const windUp = Math.min(1, held / WIND_UP_S)
+  // Let go, you keep whirling at full tilt until the launch takes over.
+  const want = launch.released ? Math.max(launch.rate, spinRate(1) * 0.9) : spinRate(launch.charge) * windUp
+  launch.rate += (want - launch.rate) * (1 - Math.exp(-RATE_FOLLOW * dt))
+  launch.spin -= launch.rate * dt
   return launch.charge
 }
 
@@ -71,23 +83,26 @@ export function letGo(now = performance.now()) {
   return charge
 }
 
-/** The authority's launch has started from the stretch: it takes it from here. */
+/** The authority's launch has started from the spin: hands over the angle and speed. */
 export function consumePull() {
+  const state = { spin: launch.spin, rate: launch.rate, live: launch.gripping || launch.released }
   launch.gripping = false
   launch.auto = false
   launch.released = false
   launch.charge = 0
-  launch.full = false
+  launch.rate = 0
+  return state
 }
 
-/** Gives up the stretch (jumped, stepped away, a panel opened, no answer came). */
+/** Drops off the bar without launching (CANCEL, a panel opened, no answer came). */
 export function cancelPull() {
   launch.gripping = false
   launch.auto = false
   launch.released = false
   launch.charge = 0
-  launch.full = false
+  launch.rate = 0
+  launch.spin = 0
 }
 
-/** Whether you're on the posts at all: holding them, or let go and waiting. */
+/** Whether you're on the bar at all: spinning, or let go and waiting. */
 export const isPulling = () => launch.gripping || launch.released

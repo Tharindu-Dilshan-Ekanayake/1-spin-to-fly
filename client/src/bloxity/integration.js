@@ -21,7 +21,7 @@ import { getBloxityState, useBloxityStore } from './store'
 /** Boards the game declares; scores come from the game server (or, offline, below). */
 export const LEADERBOARDS = [
   { id: 'rebirths', label: 'Rebirths', order: 'desc', mode: 'best', format: 'number', reset: 'none' },
-  { id: 'wins', label: 'Total Wins', order: 'desc', mode: 'best', format: 'compact', reset: 'none' },
+  { id: 'wins', label: 'Total Cash', order: 'desc', mode: 'best', format: 'compact', reset: 'none' },
   { id: 'distance', label: 'Longest Flight (m)', order: 'desc', mode: 'best', format: 'compact', reset: 'none' },
   { id: 'playtime', label: 'Minutes Played', order: 'desc', mode: 'best', format: 'number', reset: 'none' },
 ]

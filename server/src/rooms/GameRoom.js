@@ -12,7 +12,8 @@ import { getLeaderboards } from '../leaderboards.js'
 import { activePlayers, broadcastAll, liveRooms } from '../registry.js'
 import { GameState, PlayerState } from './schema.js'
 
-const MAX_CLIENTS = 8
+/** Seats per room: 16 players can play together in one server. */
+const MAX_CLIENTS = 16
 const RECONNECT_SECONDS = 20
 const AUTOSAVE_MS = 30_000
 /** State patches to clients, and the training simulation, per second. */
@@ -159,6 +160,9 @@ export class GameRoom extends Room {
             tireId: profile.equippedTire,
             // How well it was timed: others see the jump smash and the flight it made.
             hit: result.hit,
+            // A rare throw: everyone sees its burst, and hears who got it.
+            rare: result.rare,
+            name: profile.name,
             world: profile.world,
             x: player.x,
             z: player.z,

@@ -33,7 +33,7 @@ const _haloS = new Vector3()
 
 /** Height of a stand's glowing cap above its pad; the arm floats over it. */
 const CAP_TOP = 1.12
-/** Showroom arms' scale: a flexed arm about 2.3 m tall. */
+/** Showroom arms' scale: a standing pair about 2.6 m tall. */
 const SHOWN_ARM = 1.1
 /** How high an arm's middle floats over its stand: clear of the cap. */
 const HOVER = CAP_TOP + SHOWN_ARM * 1.15 + 0.35
@@ -79,9 +79,10 @@ function buildStands() {
 
 /**
  * The arm shop: twenty-four display stands on the two showroom stages, each with a pair
- * of arms - one flexing arm, painted as those arms (armStyles.js) - floating above it,
- * turning slowly like a trophy on a turntable and flexing a little. Stands recolour and
- * their labels rewrite as you buy and equip. Three draw calls: stands, arms, halos.
+ * of blocky power arms standing on end above it, painted as those arms and wrapped in
+ * their glowing aura - fire, lightning, toxic, void, frost, gold, rainbow (armStyles.js)
+ * - turning slowly like a trophy on a turntable and pulsing a little. Stands recolour and
+ * their labels rewrite as you buy and equip. Four draw calls: stands, arms, auras, halos.
  */
 export function TireShop() {
   // As a string: the profile is a fresh copy after every update (a launch, a rep...).
@@ -133,7 +134,7 @@ export function TireShop() {
     const t = state.clock.elapsedTime
     for (const stand of TIRE_STANDS) {
       _p.set(stand.x, stand.y + HOVER + Math.sin(t * 1.6 + stand.index) * 0.15, stand.z)
-      // Turning round on the spot, flexing: a squeeze of the bicep every couple of seconds.
+      // Turning round on the spot, pulsing with power every couple of seconds.
       const flex = Math.max(0, Math.sin(t * 2.2 + stand.index)) * 0.06
       _q.setFromEuler(_e.set(0.08, t * 0.6 + stand.index * 0.7, 0, 'YXZ'))
       balls.setMatrixAt(stand.index, _m.compose(_p, _q, _s.set(SHOWN_ARM * (1 + flex), SHOWN_ARM * (1 - flex * 0.5), SHOWN_ARM * (1 + flex))))

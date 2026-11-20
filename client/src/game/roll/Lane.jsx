@@ -17,6 +17,7 @@ import {
   Vector3,
 } from 'three'
 
+import { formatDistance } from '@shared/format'
 import { zoneIndexAt } from '@shared/logic'
 
 import { getQuality } from '../../store/quality'
@@ -26,7 +27,7 @@ import { PALETTE, TEAM, venueOf } from '../sceneStyle'
 import { activeWorld, blendSky, perWorld, skyLook, zones } from '../worldLook'
 import { SLOPE_EULER_X, slopeBoxMatrix, trackPoint } from './path'
 import { roll } from './rollControl'
-import { LANE_STRIPE, STAGE_LOOKS, ZONE_THEMES } from './themes'
+import { LANE_STRIPE, RUNWAY_RAINBOW, STAGE_LOOKS, ZONE_THEMES } from './themes'
 
 /**
  * The launch runway: a long strip down a green valley, every stage in its own colour of
@@ -95,14 +96,27 @@ function colorOf(hex) {
 const lookAt = (meter) => STAGE_LOOKS[zones()[zoneIndexAt(meter)].theme] ?? STAGE_LOOKS.grassy
 
 /** Each stage's runway colour, round the rainbow: [light, dark] squares of it. */
-const RAINBOW = ['#ff5a5a', '#ff9a2e', '#ffd93a', '#5fdc4a', '#3fd6e8', '#4f86ff', '#a465ff', '#ff6bd0']
+const RAINBOW = RUNWAY_RAINBOW
 const RUNWAY = RAINBOW.map((hex) => [new Color(hex).lerp(new Color('#ffffff'), 0.12), new Color(hex).multiplyScalar(0.86)])
 const runwayAt = (meter, k) => RUNWAY[zoneIndexAt(meter) % RUNWAY.length][k % 2]
 
 /** World 1's valley: grass beside the runway and under the hills, and the hills' dirt. */
 const VALLEY = { grass: ['#45c43c', '#3db535'], ground: '#3aa834', dirt: ['#ff8aa8', '#c08cff'], leaves: ['#ff6fae', '#ffd21f'], trunk: '#ffffff' }
 /** Each stage's sky, parsed once per world. */
-const stageSkies = perWorld((zs) => zs.map((z) => skyLook(ZONE_THEMES[z.theme]?.sky ?? ZONE_THEMES.grassy.sky)))
+/**
+ * Shipwreck Cove's runway stays in the sunset the whole way: each stage gets one of these
+ * sunset skies in turn - golden hour, pink dusk, fiery orange, violet twilight - instead of
+ * its theme's daytime one.
+ */
+const SUNSET_SKIES = [
+  { top: '#3a2a8a', horizon: '#ffb36a', sun: '#ffe08a', glow: 1.7, clouds: 0.7 },
+  { top: '#4a2378', horizon: '#ff8fa0', sun: '#ffc07a', glow: 1.6, clouds: 0.75 },
+  { top: '#5a1f5e', horizon: '#ff7a3a', sun: '#ffcf5a', glow: 2.0, clouds: 0.6 },
+  { top: '#22164f', horizon: '#c86aa0', sun: '#ffb070', glow: 1.4, clouds: 0.55, stars: 0.35 },
+]
+const stageSkies = perWorld((zs, world) =>
+  zs.map((z, i) => skyLook(world === 1 ? SUNSET_SKIES[i % SUNSET_SKIES.length] : (ZONE_THEMES[z.theme]?.sky ?? ZONE_THEMES.grassy.sky))),
+)
 /** A stable pseudo-random 0-1 for piece `k` (and a salt): the same on every client. */
 function hash(k, salt) {
   let h = Math.imul(k ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(salt + 1, 0xc2b2ae35)
@@ -114,7 +128,7 @@ function hash(k, salt) {
 
 const YARD_EVERY = 10
 const YARD_LINES = Math.ceil(FIELD_LENGTH / YARD_EVERY) + 2
-const POST_EVERY = 100
+/** Slots left over from the template's distance gates (kept so the instance layout stays). */
 const POST_SLOTS = 8
 const POST_PARTS = 5
 const TOWER_SLOTS = 8
@@ -124,14 +138,6 @@ const BANNER_PARTS = 4
 const GOALPOSTS = YARD_LINES
 const TOWERS = GOALPOSTS + POST_SLOTS * POST_PARTS
 const ARCHES = TOWERS + TOWER_SLOTS * 2 * TOWER_PARTS
-/** The distance gates' height (to their beam) and half their spread. */
-const GATE_HEIGHT = 12
-const POST_HALF = 4.1
-/** The banner arches stand at the pitch's edges (their pillars between the sideline and the boards). */
-const ARCH_HALF = LANE_WIDTH / 2 + 0.6
-const ARCH_HEIGHT = 9
-/** Banner boards: size on the arch, and the height of their middle. */
-const BANNER = { width: 14, height: 3.5, y: 7.4 }
 const YELLOW = '#ffd21f'
 const WHITE = '#f4f7fb'
 const NAVY = TEAM.navy
@@ -406,13 +412,23 @@ function createGlyphs() {
   return mesh
 }
 
-// --- The banner boards: one atlas row per arch, one instanced plane ------------------------
+// --- The stage names painted on the ground: one atlas row each, one instanced plane --------
+
+/** How big each stage's ground lettering is, and how far past the stage's start. */
+const GROUND_NAME = { width: 16, ahead: 7 }
+/** Lying flat on the ground, its top towards the way you fly (north). */
+const GROUND_FLAT = new Quaternion().setFromEuler(new Euler(-Math.PI / 2, 0, 0))
+const _sv = new Vector3()
 
 /** Atlas: BANNERS rows, each a quarter as tall as it is wide (the board's shape). */
 const BANNER_COLS = 512
 const BANNER_ROW = BANNER_COLS / 4
 
-/** Paints arch `slot`'s board: name over its length, on navy in a gold frame. */
+/**
+ * Paints slot `slot`'s ground lettering: the stage's name in big gold letters with a thick
+ * dark outline and a soft shadow, and its zone and distance in white under it - on
+ * nothing, so it reads as painted on the runway.
+ */
 function drawBanner(canvas, slot, name, sub) {
   const ctx = canvas.getContext('2d')
   // Laid out in BANNER_COLS units; the canvas may be smaller (createBanners).
@@ -420,30 +436,30 @@ function drawBanner(canvas, slot, name, sub) {
   ctx.setTransform(k, 0, 0, k, 0, 0)
   const y0 = slot * BANNER_ROW
   ctx.clearRect(0, y0, BANNER_COLS, BANNER_ROW)
-  ctx.fillStyle = '#ffb81f'
-  ctx.fillRect(0, y0, BANNER_COLS, BANNER_ROW)
-  ctx.fillStyle = NAVY
-  ctx.fillRect(7, y0 + 7, BANNER_COLS - 14, BANNER_ROW - 14)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineJoin = 'round'
-  // The name as big as fits.
-  ctx.font = `64px ${FONT}`
-  const size = Math.min(66, (64 * (BANNER_COLS - 56)) / Math.max(1, ctx.measureText(name).width))
+  ctx.font = `70px ${FONT}`
+  const size = Math.min(74, (70 * (BANNER_COLS - 40)) / Math.max(1, ctx.measureText(name).width))
   ctx.font = `${size}px ${FONT}`
   const y = y0 + BANNER_ROW * 0.4
-  ctx.lineWidth = size * 0.16
-  ctx.strokeStyle = '#05091c'
+  ctx.lineWidth = size * 0.22
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)'
+  ctx.strokeText(name, BANNER_COLS / 2 + 3, y + 4)
+  ctx.strokeStyle = '#1a1033'
   ctx.strokeText(name, BANNER_COLS / 2, y)
   const gradient = ctx.createLinearGradient(0, y - size * 0.45, 0, y + size * 0.45)
   gradient.addColorStop(0, '#fffbd0')
   gradient.addColorStop(0.5, '#ffd21f')
-  gradient.addColorStop(1, '#ff9c00')
+  gradient.addColorStop(1, '#ff8a00')
   ctx.fillStyle = gradient
   ctx.fillText(name, BANNER_COLS / 2, y)
-  ctx.font = `26px ${FONT}`
+  ctx.font = `28px ${FONT}`
+  ctx.lineWidth = 7
+  ctx.strokeStyle = '#1a1033'
+  ctx.strokeText(sub, BANNER_COLS / 2, y0 + BANNER_ROW * 0.83)
   ctx.fillStyle = '#ffffff'
-  ctx.fillText(sub, BANNER_COLS / 2, y0 + BANNER_ROW * 0.8)
+  ctx.fillText(sub, BANNER_COLS / 2, y0 + BANNER_ROW * 0.83)
 }
 
 const bannerVertex = /* glsl */ `
@@ -463,7 +479,9 @@ const bannerFragment = /* glsl */ `
   varying vec2 vUv;
   #include <fog_pars_fragment>
   void main() {
-    gl_FragColor = vec4(texture2D(uAtlas, vUv).rgb, 1.0);
+    vec4 tex = texture2D(uAtlas, vUv);
+    if (tex.a < 0.04) discard;
+    gl_FragColor = tex;
     #include <colorspace_fragment>
     #include <fog_fragment>
   }
@@ -488,6 +506,12 @@ function createBanners() {
     vertexShader: bannerVertex,
     fragmentShader: bannerFragment,
     fog: true,
+    transparent: true,
+    depthWrite: false,
+    // Painted on the turf: drawn just in front of it, never fighting it for depth.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -4,
   })
   const mesh = new InstancedMesh(geometry, material, BANNERS)
   for (let i = 0; i < BANNERS; i += 1) mesh.setMatrixAt(i, ZERO)
@@ -525,11 +549,114 @@ function createCity() {
 }
 
 /**
+ * Each stage's scenery on the hills beside the runway: the hills' two dirt colours and
+ * what grows on them (SCENERY_PROPS), so every stage looks like its name - cacti on the
+ * desert dunes, palms by the beach, snowy pines on white hills, glowing lava rocks on the
+ * volcano, crystals in the caves, lollipops in candy land, giant mushrooms, coral, neon
+ * pillars, clouds, moon rocks... `a` / `b` are the prop's two colours.
+ */
+const SCENERY = {
+  grassy: { dirt: ['#b47c46', '#8f6236'], cap: 'grass', prop: 'tree', a: '#7a4a24', b: '#3fbf47', c: '#ff8fc8' },
+  autumn: { dirt: ['#d07a40', '#a85a2a'], cap: 'grass', prop: 'tree', a: '#7a4a24', b: '#ff8a1f', c: '#ffc21f' },
+  desert: { dirt: ['#f2c47c', '#e0a85a'], prop: 'cactus', a: '#2fae4a', b: '#46c85e' },
+  beach: { dirt: ['#f0d9a0', '#e8cf92'], prop: 'palm', a: '#9a6a3a', b: '#2fae4a' },
+  jungle: { dirt: ['#8a5e33', '#6e4b2a'], cap: 'grass', prop: 'tree', a: '#7a4a24', b: '#1f9a3a', c: '#2fbf47' },
+  frozen: { dirt: ['#eef6ff', '#cfe2f6'], prop: 'pine', a: '#7a4a24', b: '#ffffff' },
+  cherry: { dirt: ['#ffd6ea', '#f4b4d4'], prop: 'tree', a: '#5a3a2a', b: '#ff9cd0', c: '#ffffff' },
+  candy: { dirt: ['#ffb6e6', '#b6e6ff'], prop: 'lollipop', a: '#ffffff', b: '#ff5fb0' },
+  mushroom: { dirt: ['#7a5aa8', '#5a4a8a'], prop: 'mushroom', a: '#fff6e8', b: '#ff3b4a' },
+  volcano: { dirt: ['#3a2420', '#552a20'], prop: 'lavarock', a: '#2a1a18', b: '#ff6a14' },
+  swamp: { dirt: ['#5a4a32', '#4a3c28'], cap: 'grass', prop: 'tree', a: '#4a3a24', b: '#5a8a3a', c: '#8aae4a' },
+  crystal: { dirt: ['#4a3a8a', '#3a2c70'], prop: 'crystal', a: '#b07bff', b: '#5fd6ff' },
+  ocean: { dirt: ['#f0d9a0', '#3fc6c0'], prop: 'coral', a: '#ff6a8a', b: '#ffa63a' },
+  neon: { dirt: ['#1d2246', '#2a1450'], prop: 'neon', a: '#141830', b: '#ff3bd8' },
+  sky: { dirt: ['#ffffff', '#dff2ff'], prop: 'cloud', a: '#ffffff', b: '#eaf6ff' },
+  rainbow: { dirt: ['#ffb0f4', '#b0e0ff'], prop: 'crystal', a: '#ff7ad9', b: '#7fe2ff' },
+  moon: { dirt: ['#9aa0ac', '#7a808c'], prop: 'moonrock', a: '#6a707c', b: '#ffffff' },
+  aurora: { dirt: ['#d8e8f8', '#a8c4e0'], prop: 'pine', a: '#5a3a2a', b: '#eaf6ff' },
+  space: { dirt: ['#2a2a5a', '#1a1a40'], prop: 'moonrock', a: '#3a3a6a', b: '#5fd6ff' },
+  cosmic: { dirt: ['#3a1a6a', '#2a1450'], prop: 'crystal', a: '#ff4fd8', b: '#ffd24a' },
+}
+const sceneryAt = (meter) => SCENERY[zones()[zoneIndexAt(meter)]?.theme] ?? SCENERY.grassy
+
+/**
+ * The two boxes of a stage's prop on a hill top at height `h`, `tx` across:
+ * [x, y centre, z, width, height, depth, colour, style, turn].
+ */
+function sceneryProp(look, tx, h, k) {
+  const r = hash(k, 7)
+  const turn = r * Math.PI
+  switch (look.prop) {
+    case 'cactus':
+      return [
+        [tx, h + 2.4, 0, 1.1, 4.8, 1.1, look.a, STYLE.STUDS, 0],
+        [tx, h + 3.2, 0, 3.2, 0.8, 0.8, look.b, STYLE.STUDS, turn],
+      ]
+    case 'palm':
+      return [
+        [tx, h + 3.2, 0, 0.7, 6.4, 0.7, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 6.5, 0, 5.4, 0.3, 5.4, look.b, STYLE.SMOOTH, turn],
+      ]
+    case 'pine':
+      return [
+        [tx, h + 0.9, 0, 0.8, 1.8, 0.8, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 3.6, 0, 2.8, 3.8, 2.8, look.b, STYLE.STUDS, turn],
+      ]
+    case 'lollipop':
+      return [
+        [tx, h + 2.0, 0, 0.35, 4.0, 0.35, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 4.8, 0, 3.0, 3.0, 0.7, look.b, STYLE.RAINBOW, turn],
+      ]
+    case 'mushroom':
+      return [
+        [tx, h + 1.4, 0, 1.3, 2.8, 1.3, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 3.3, 0, 4.6, 1.4, 4.6, look.b, STYLE.STUDS, turn],
+      ]
+    case 'lavarock':
+      return [
+        [tx, h + 1.1, 0, 3.4, 2.2, 3.0, look.a, STYLE.STUDS, turn],
+        [tx, h + 2.35, 0, 2.4, 0.4, 2.0, look.b, STYLE.LAVA, turn],
+      ]
+    case 'crystal':
+      return [
+        [tx, h + 2.6, 0, 1.4, 5.2, 1.4, look.a, STYLE.GLOW, turn],
+        [tx + 1.3, h + 1.4, 0.6, 0.9, 2.8, 0.9, look.b, STYLE.GLOW, turn + 0.7],
+      ]
+    case 'coral':
+      return [
+        [tx, h + 1.8, 0, 0.9, 3.6, 0.9, look.a, STYLE.STUDS, 0],
+        [tx + 0.9, h + 1.2, 0, 2.2, 1.6, 2.0, look.b, STYLE.STUDS, turn],
+      ]
+    case 'neon':
+      return [
+        [tx, h + 3.0, 0, 0.9, 6.0, 0.9, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 6.4, 0, 1.6, 1.6, 1.6, look.b, STYLE.GLOW, turn],
+      ]
+    case 'cloud':
+      return [
+        [tx, h + 4.0, 0, 5.0, 1.8, 3.2, look.a, STYLE.SMOOTH, turn],
+        [tx + 1.0, h + 4.9, 0.4, 2.8, 1.5, 2.4, look.b, STYLE.SMOOTH, turn],
+      ]
+    case 'moonrock':
+      return [
+        [tx, h + 0.9, 0, 3.2, 1.8, 2.8, look.a, STYLE.STUDS, turn],
+        [tx + 0.8, h + 2.2, 0.3, 0.6, 1.2, 0.6, look.b, STYLE.GLOW, turn],
+      ]
+    default:
+      // A tree: trunk and leaf cube (now and then the second colour).
+      return [
+        [tx, h + 1.4, 0, 0.9, 2.8, 0.9, look.a, STYLE.SMOOTH, 0],
+        [tx, h + 3.9, 0, 3.6, 2.4, 3.6, r > 0.8 && look.c ? look.c : look.b, STYLE.STUDS, 0],
+      ]
+  }
+}
+
+/**
  * World 1's piece `k` in a skyline slot instead of a building: a blocky hill of
- * checkered dirt with a grass cap (STYLE.HILL) - a big terrace and a higher one stepped
- * up on it behind - and a tree (trunk and leaf cube, now and then pink blossom) on its
- * front terrace, at a random distance beyond the grass, the same on every client.
- * Alternating sides, so the runway runs down a valley between them. Four boxes each.
+ * checkered dirt with a cap (STYLE.MESA) - a big terrace and a higher one stepped up on it
+ * behind - in the colours of the stage it stands beside, with that stage's prop on its
+ * front terrace (sceneryProp), at a random distance beyond the grass, the same on every
+ * client. Alternating sides, so the runway runs down a valley between them. Four boxes each.
  */
 function placeHill(mesh, styles, k, sparse) {
   const slot = (k % CITY_SLOTS) * PARTS
@@ -541,23 +668,24 @@ function placeHill(mesh, styles, k, sparse) {
   const h = 8 + Math.floor(hash(k, 3) * 4) * 4
   const x = side * (LANE_WIDTH / 2 + 8 + w / 2 + hash(k, 1) * 24)
   const back = side * (w * 0.3)
-  const pink = hash(k, 6) > 0.8
   const tx = x - side * (w / 2 - 3)
+  const look = sceneryAt(metre)
+  // Grassy stages get grass-capped dirt cliffs; the rest, mesas in their colours.
+  const cap = look.cap === 'grass' ? STYLE.HILL : STYLE.MESA
   const parts = [
-    // [x, y centre, z, width, height, depth, colour, style]
-    [x, h / 2, 0, w, h, d, VALLEY.dirt[k % 2], STYLE.MESA],
-    [x + back, h + h * 0.4, 0, w * 0.6, h * 0.8, d * 0.75, VALLEY.dirt[(k + 1) % 2], STYLE.MESA],
-    [tx, h + 1.4, 0, 0.9, 2.8, 0.9, VALLEY.trunk, STYLE.SMOOTH],
-    [tx, h + 3.9, 0, 3.6, 2.4, 3.6, VALLEY.leaves[pink ? 1 : 0], STYLE.STUDS],
+    // [x, y centre, z, width, height, depth, colour, style, turn]
+    [x, h / 2, 0, w, h, d, look.dirt[k % 2], cap, 0],
+    [x + back, h + h * 0.4, 0, w * 0.6, h * 0.8, d * 0.75, look.dirt[(k + 1) % 2], cap, 0],
+    ...sceneryProp(look, tx, h, k),
   ]
   for (let i = 0; i < PARTS; i += 1) {
     if (skip) {
       mesh.setMatrixAt(slot + i, ZERO)
       continue
     }
-    const [px, py, pz, sx, sy, sz, c, style] = parts[i]
+    const [px, py, pz, sx, sy, sz, c, style, rot] = parts[i]
     trackPoint(metre + pz, px, py, _p)
-    mesh.setMatrixAt(slot + i, _m.compose(_p, _white.identity(), _s.set(sx, sy, sz)))
+    mesh.setMatrixAt(slot + i, _m.compose(_p, _white.setFromAxisAngle(_up, rot), _s.set(sx, sy, sz)))
     mesh.setColorAt(slot + i, colorOf(c))
     styles[slot + i] = style
   }
@@ -626,9 +754,9 @@ function createStripes() {
 const mark = (marks, i, m, x, h, sx, sy, sz) => marks.setMatrixAt(i, slopeBoxMatrix(m, x, h, sx, sy, sz, 0, _m))
 
 /**
- * Lays the yard lines, goalposts, floodlights and banner arches for the stretch from
- * `from` on. The arches' name boards (`banners`) are re-lettered only where the stage in
- * a slot has changed (`laid.banners`).
+ * Lays the yard lines and floodlights for the stretch from `from` on, and paints each
+ * stage's name big on the ground just past its start (`banners`, re-lettered only where
+ * the stage in a slot has changed: `laid.banners`).
  */
 function placeMarks(marks, banners, from, laid) {
   const to = from + FIELD_LENGTH
@@ -647,22 +775,9 @@ function placeMarks(marks, banners, from, laid) {
     if (clash) marks.setMatrixAt(j % YARD_LINES, ZERO)
     else mark(marks, j % YARD_LINES, m, 0, 0.07, LANE_WIDTH, 0.04, j % 5 === 0 ? 0.7 : 0.35)
   }
-  // A distance gate every 100 metres (not at the start): a banner strip, two pillars, the
-  // beam across their tops and a marker on it.
-  const p0 = Math.max(1, Math.ceil(from / POST_EVERY))
-  for (let p = p0; p < p0 + POST_SLOTS; p += 1) {
-    const base = GOALPOSTS + (p % POST_SLOTS) * POST_PARTS
-    const m = p * POST_EVERY
-    if (m > to) {
-      for (let i = 0; i < POST_PARTS; i += 1) marks.setMatrixAt(base + i, ZERO)
-      continue
-    }
-    mark(marks, base, m, 0, GATE_HEIGHT - 0.7, POST_HALF * 2 - 0.4, 0.5, 0.4)
-    mark(marks, base + 1, m, -POST_HALF, GATE_HEIGHT / 2, 0.6, GATE_HEIGHT, 0.6)
-    mark(marks, base + 2, m, POST_HALF, GATE_HEIGHT / 2, 0.6, GATE_HEIGHT, 0.6)
-    mark(marks, base + 3, m, 0, GATE_HEIGHT, POST_HALF * 2 + 0.6, 0.6, 0.6)
-    mark(marks, base + 4, m, 0, GATE_HEIGHT + 0.75, 0.9, 0.9, 0.9)
-  }
+  // No distance gates over the runway (the yard lines and painted numbers mark it): their
+  // slots stay empty.
+  for (let i = 0; i < POST_SLOTS * POST_PARTS; i += 1) marks.setMatrixAt(GOALPOSTS + i, ZERO)
   // A floodlight tower either side every 100 yards, halfway between the posts, behind the pavilions.
   const t0 = Math.max(0, Math.ceil((from - 50) / 100))
   for (let t = t0; t < t0 + TOWER_SLOTS; t += 1) {
@@ -684,28 +799,22 @@ function placeMarks(marks, banners, from, laid) {
       mark(marks, base + 1, m, s * 26.1, 18, 0.8, 3, 5.4)
     }
   }
-  // A banner arch over the start of each stage in view, its name board on the front.
+  // No arches over the stages: their slots stay empty. Instead each stage's name is painted
+  // big on the ground just past where it starts, reading from behind as you fly in.
   for (let i = 0; i < BANNERS * BANNER_PARTS; i += 1) marks.setMatrixAt(ARCHES + i, ZERO)
   for (let i = 0; i < BANNERS; i += 1) banners.setMatrixAt(i, ZERO)
   for (let i = 0; i < stages.length; i += 1) {
-    // The first stage's arch stands just past the start line; the rest at their starts.
-    const m = i === 0 ? 8 : stages[i].start
+    const m = (i === 0 ? 12 : stages[i].start) + GROUND_NAME.ahead
     if (m < from - 30 || m > to) continue
     const slot = i % BANNERS
-    const base = ARCHES + slot * BANNER_PARTS
-    const gate = colorOf(ZONE_THEMES[stages[i].theme].gate)
-    mark(marks, base, m, -ARCH_HALF, TURF_TOP + ARCH_HEIGHT / 2, 0.8, ARCH_HEIGHT, 0.8)
-    mark(marks, base + 1, m, ARCH_HALF, TURF_TOP + ARCH_HEIGHT / 2, 0.8, ARCH_HEIGHT, 0.8)
-    mark(marks, base + 2, m, 0, ARCH_HEIGHT + 0.64, ARCH_HALF * 2 + 0.8, 1.2, 1.2)
-    mark(marks, base + 3, m, 0, BANNER.y, BANNER.width + 0.4, BANNER.height + 0.4, 0.4)
-    for (let part = 0; part < 3; part += 1) marks.setColorAt(base + part, gate)
-    banners.setMatrixAt(slot, slopeBoxMatrix(m - 0.45, 0, BANNER.y, BANNER.width, BANNER.height, 1, 0, _m))
+    trackPoint(m, 0, 0.14, _p)
+    banners.setMatrixAt(slot, _m.compose(_p, GROUND_FLAT, _sv.set(GROUND_NAME.width, GROUND_NAME.width / 4, 1)))
     const key = `${laid.world}:${i}`
     if (laid.banners[slot] !== key) {
       laid.banners[slot] = key
-      const length = (stages[i + 1]?.start ?? stages[i].start + 100) - stages[i].start
-      banners.userData.texts[slot] = [stages[i].name, `${length} M`]
-      drawBanner(banners.userData.canvas, slot, stages[i].name, `${length} M`)
+      const sub = `ZONE ${i + 1} - ${formatDistance(stages[i].start)}`
+      banners.userData.texts[slot] = [stages[i].name, sub]
+      drawBanner(banners.userData.canvas, slot, stages[i].name, sub)
       banners.userData.texture.needsUpdate = true
     }
   }

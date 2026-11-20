@@ -31,22 +31,26 @@ const GOLD = [
   [1, '#f08c00'],
 ]
 
+/**
+ * Cash: a fat stack of green banknotes, a gold coin on top (the game's currency; the key
+ * stays `trophy`, the template's name for it).
+ */
 const trophy = svg(
-  `<g stroke="${OUT}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M27 24H11c0 19 9 28 22 30" fill="none" stroke-width="13"/>
-    <path d="M73 24h16c0 19-9 28-22 30" fill="none" stroke-width="13"/>
+  `<g stroke="${OUT}" stroke-width="6" stroke-linejoin="round">
+    <path d="M10 62l44-20 36 16-44 22z" fill="#2fae4a"/>
+    <path d="M10 62v10l36 18v-10z" fill="#1f8a3a"/>
+    <path d="M46 80v10l44-22V58z" fill="#27a043"/>
+    <path d="M10 48l44-20 36 16-44 22z" fill="url(#ca-g)"/>
+    <path d="M10 48v10l36 18v-10z" fill="#1f8a3a"/>
+    <path d="M46 66v10l44-22V44z" fill="#27a043"/>
   </g>
-  <g fill="none" stroke="url(#tr-g)" stroke-width="5" stroke-linecap="round">
-    <path d="M27 24H11c0 19 9 28 22 30"/><path d="M73 24h16c0 19-9 28-22 30"/>
-  </g>
-  <g stroke="${OUT}" stroke-width="5" stroke-linejoin="round" fill="url(#tr-g)">
-    <path d="M42 62h16l3 15H39z"/>
-    <rect x="27" y="76" width="46" height="15" rx="5"/>
-    <path d="M22 12h56v22c0 19-12 30-28 30S22 53 22 34z"/>
-  </g>
-  <path d="M50 21l4.6 9.4 10.4 1.5-7.5 7.3 1.8 10.3L50 44.6l-9.3 4.9 1.8-10.3-7.5-7.3 10.4-1.5z" fill="#fffbd1" stroke="#d98900" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M30 18v16c0 8 3 14 8 18" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" opacity=".75"/>`,
-  vgrad('tr-g', GOLD),
+  <ellipse cx="50" cy="46" rx="11" ry="5.5" fill="none" stroke="#bfffc8" stroke-width="3.5"/>
+  <circle cx="72" cy="26" r="15" fill="url(#co-g)" stroke="${OUT}" stroke-width="6"/>
+  <path d="M72 18v16M67 21c2-2 9-2 10 1s-9 4-9 7 8 3 10 1" fill="none" stroke="#b86e00" stroke-width="3" stroke-linecap="round"/>`,
+  vgrad('ca-g', [
+    [0, '#8dff8a'],
+    [1, '#2fd14a'],
+  ]) + vgrad('co-g', GOLD),
 )
 
 const muscle = svg(
@@ -142,11 +146,8 @@ const star = svg(
   `<path d="M50 8l12 25 27 4-20 19 5 27-24-13-24 13 5-27-20-19 27-4z" fill="#ffffff" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>`,
 )
 
-/**
- * Power (the code's `health`): a chunky lightning bolt, glossy yellow with a white shine.
- * Still named `heart`, so every place that showed Health shows Power.
- */
-const heart = svg(
+/** A chunky lightning bolt, glossy yellow with a white shine. */
+const bolt = svg(
   `<path d="M58 6L18 56h24l-8 38 48-54H56z" fill="url(#ht-g)" stroke="${OUT}" stroke-width="6" stroke-linejoin="round"/>
   <path d="M52 16L28 48" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".8"/>`,
   vgrad('ht-g', [
@@ -157,30 +158,27 @@ const heart = svg(
 )
 
 /**
- * A rubber arm at full stretch: a long pink arm snaking up from the bottom left, ringed
- * like a rubber band, ending in a big golden fist, with speed marks where it's pulled -
- * in a thick ink outline. Still named `tire`, so every place that showed the template's
- * tire (the LAUNCH button, the shop, the passes, the loading screen) shows the arm.
+ * The spin: a steel bar with two sweeping arrows whirling round it and a golden star
+ * flung off the top - the game's own mark (the lobby's floor logo is the same). Still
+ * named `tire`, so every place that showed the template's tire (the Auto Launch pass, the
+ * Store, the flight's progress marker, the loading screen) shows it.
  */
-const STRETCH = 'M16 88C20 62 50 72 48 50S60 32 66 31'
 const tire = svg(
-  `<path d="${STRETCH}" fill="none" stroke="${OUT}" stroke-width="25" stroke-linecap="round"/>
-  <path d="${STRETCH}" fill="none" stroke="url(#ar-g)" stroke-width="15" stroke-linecap="round"/>
-  <path d="${STRETCH}" fill="none" stroke="#fff" stroke-width="15" stroke-dasharray="4 10" opacity=".5"/>
-  <circle cx="73" cy="27" r="17" fill="url(#ar-f)" stroke="${OUT}" stroke-width="6"/>
-  <path d="M66 12l3 8M74 10v10M82 12l-3 8" fill="none" stroke="${OUT}" stroke-width="3.5" stroke-linecap="round"/>
-  <path d="M61 20q2-6 6-8" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
-  <path d="M6 60l10 4M7 73l10 1M30 94l3-9" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
-  <path d="M6 60l10 4M7 73l10 1M30 94l3-9" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>`,
-  vgrad('ar-g', [
-    [0, '#ffa3dc'],
-    [1, '#e2318c'],
-  ]) +
-    vgrad('ar-f', [
-      [0, '#fff0a0'],
-      [0.5, '#ffcf2e'],
-      [1, '#f08c00'],
-    ]),
+  `<g fill="none" stroke-linecap="round">
+    <path d="M24 66A30 30 0 0 1 36 24" stroke="${OUT}" stroke-width="15"/>
+    <path d="M76 34A30 30 0 0 1 64 76" stroke="${OUT}" stroke-width="15"/>
+    <path d="M24 66A30 30 0 0 1 36 24" stroke="url(#sp-g)" stroke-width="8"/>
+    <path d="M76 34A30 30 0 0 1 64 76" stroke="url(#sp-g)" stroke-width="8"/>
+  </g>
+  <path d="M30 14l14 8-15 6z" fill="#4fd8ff" stroke="${OUT}" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M70 86l-14-8 15-6z" fill="#4fd8ff" stroke="${OUT}" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M8 50h84" stroke="${OUT}" stroke-width="13" stroke-linecap="round"/>
+  <path d="M8 50h84" stroke="#e8eef6" stroke-width="6" stroke-linecap="round"/>
+  <path d="M78 6l3.5 7.5 8 1.2-5.8 5.6 1.4 8L78 24.6l-7.1 3.7 1.4-8-5.8-5.6 8-1.2z" fill="url(#sp-s)" stroke="${OUT}" stroke-width="3.5" stroke-linejoin="round"/>`,
+  vgrad('sp-g', [
+    [0, '#bff4ff'],
+    [1, '#2fb8ff'],
+  ]) + vgrad('sp-s', GOLD),
 )
 
 /** A round potion flask with a cork, filled with `liquid` and a small badge icon. */
@@ -330,7 +328,9 @@ export const ICON_SVGS = {
   calendar,
   star,
   settings,
-  heart,
+  // Strength: the flexed arm (the key stays `heart`, the template's name for Health).
+  heart: muscle,
+  bolt,
   tire,
   potionWins,
   potionHealth,
