@@ -74,25 +74,26 @@ export const WALKABLE = [PLAZA]
 // --- Training pads ------------------------------------------------------------------
 
 /**
- * The training benches stand in two straight columns on the east wing, every one facing
- * west, towards the red carpet that runs from the lobby up to the stage. Each column
- * counts from right to left as you look at it from the carpet (south to north, from the
- * leaderboards up towards the eggs): five benches in the column by the carpet, four in the
- * one behind. Each is a raised square podium (the pad: standing on it is training) with a
+ * The training benches stand in three straight lines of three on the east wing (a neat 3 x 3
+ * block), every one facing west, towards the red carpet that runs from the lobby up to the
+ * stage. The first line is the one by the carpet and each line counts from right to left as
+ * you look at it from the carpet (south to north, from the leaderboards up towards the
+ * eggs), so the free bench is the nearest to the spawn. Each is a raised square podium (the pad: standing on it is training) with a
  * weight bench across it and a dumbbell rack at each end, and its multiplier label floating
  * above. Nothing stands round a podium (only the locked ones are walled off), so you walk
  * straight onto any of them from the carpet.
  */
-/** Seven benches, then Shipwreck Cove's two at the far end of the back column. */
+/** Seven benches, then Shipwreck Cove's two at the far end of the last line. */
 export const PAD_COUNT = 9
 /** Radius of a pad's top: standing within it is training. */
 export const PAD_RADIUS = 2.7
 /** The pads' tops, a step up from the plaza. */
 export const PAD_HEIGHT = 0.5
-/** Each column's x, and the benches' z along it, right to left (south to north), 8 m apart. */
+/** Each line's x, and the benches' z along it, right to left (south to north), 10 m apart. */
 const PAD_COLUMNS = [
-  { x: 17, zs: [26, 18, 10, 2, -6] },
-  { x: 43, zs: [26, 18, 10, 2] },
+  { x: 21, zs: [24, 14, 4] },
+  { x: 33, zs: [24, 14, 4] },
+  { x: 45, zs: [24, 14, 4] },
 ]
 const PAD_SPOTS = PAD_COLUMNS.flatMap((column) => column.zs.map((z) => ({ x: column.x, z })))
 
