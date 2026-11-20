@@ -45,11 +45,9 @@ export const pose = {
  */
 export const BODY = { shoulderY: 1.35, shoulderX: 0.56, arm: 0.63, pivot: 0.9 }
 
-/** Where the launch posts' grips are, from the player standing on the pad (feet at 0). */
-export const GRIP = { x: 0.8, y: 1.45, ahead: 1.1 }
+/** The hands' spread on the spin bar (each this far out from the middle). */
+export const GRIP = { x: 0.5 }
 
-/** A pull-up bar's height over the mat, and the hands' spread on it. */
-export const BAR = { y: 2.6, x: 0.62 }
 
 /** Sway sign that moves a limb away from the body, per side. */
 const OUT_L = 1
@@ -95,9 +93,8 @@ function stance(w, time) {
   add('LegL2', 0.08, 0, 0, w)
   add('LegR1', 0.04, 0.06 * OUT_R, 0, w)
   add('LegR2', 0.08, 0, 0, w)
-  // A little hunched under the weight of arms that reach the floor.
-  add('Spine1', 0.1 + breath * 0.015, 0, 0, w)
-  add('Neck1', -0.1, 0, 0, w)
+  add('Spine1', 0.04 + breath * 0.015, 0, 0, w)
+  add('Neck1', -0.04, 0, 0, w)
   pose.lift += (-0.01 + breath * 0.006) * w
 }
 
@@ -124,22 +121,17 @@ const ARM_K = 70
 const ARM_C = 6.5
 /** Physics steps at most this long, so a slow frame can't blow the springs up. */
 const ARM_STEP = 1 / 60
-/** Knuckles rest this high: on the floor. */
-const KNUCKLES = 0.1
 /** How far past the end of the arm a rubber hand grips (its palm). */
 const HAND_REACH = 0.2
 /** Arms fling up and out to this length in the air (times their own). */
 const AIR_REACH = 1.7
 
 /**
- * Rubber arms: hanging from the shoulders, longer the more you've upgraded (`motion.grow`)
- * until they're long enough that the knuckles rest on the ground, and dragging behind as
- * you go. Each arm's swing
- * is a damped spring chasing where it wants to be (trailing further back the faster you
- * move, swinging against your stride), so the arms lag, overshoot and wobble when you
- * start, stop or land; their length is worked out every frame from the swing so the
- * hands stay on the floor, sliding along it. In the air they fling up and out, and slap
- * back down when you land. The springs' state lives on `motion` (one per avatar).
+ * Springy arms: hanging from the shoulders at their own length. Each arm's swing is a
+ * damped spring chasing where it wants to be (swinging against your stride, trailing a
+ * little the faster you move), so the arms lag, overshoot and wobble when you start,
+ * stop or land. In the air they fling up and out, and flop back down when you land. The
+ * springs' state lives on `motion` (one per avatar).
  */
 function rubberArms(motion, ratio, phase, grounded, w) {
   const time = motion.time ?? 0
@@ -150,12 +142,12 @@ function rubberArms(motion, ratio, phase, grounded, w) {
   st.t = time
   // Back from another pose (or a long pause): pick up from where the arms want to be.
   if (dt <= 0 || dt > 0.25) dt = 0
-  // Longer arms trail further behind.
-  const drag = 0.12 + 0.7 * ratio + 0.25 * grow
-  const swing = Math.sin(phase) * 0.3 * ratio
+  // Arms swing against the stride, trailing a little more the faster you go.
+  const drag = 0.04 + 0.3 * ratio
+  const swing = Math.sin(phase) * 0.65 * ratio
   const tl = grounded ? drag + swing : -0.5
   const tr = grounded ? drag - swing : -0.5
-  const tOut = grounded ? 0.2 + 0.08 * ratio : 0.9
+  const tOut = grounded ? 0.1 + 0.06 * ratio : 0.9
   while (dt > 0) {
     const h = Math.min(dt, ARM_STEP)
     dt -= h
@@ -170,15 +162,9 @@ function rubberArms(motion, ratio, phase, grounded, w) {
   st.l = Math.min(1.2, Math.max(-1.3, st.l))
   st.r = Math.min(1.2, Math.max(-1.3, st.r))
   st.out = Math.min(1.2, Math.max(0.05, st.out))
-  // Long enough to reach the floor from the shoulder, at this swing and spread.
-  const shoulder = BODY.shoulderY - 0.06 + pose.lift
-  const reach = (a) => {
-    const down = Math.max(0.2, Math.cos(a) * Math.cos(st.out))
-    const onFloor = (shoulder - KNUCKLES) / down / BODY.arm
-    // Always down to the floor: the hands drag along it.
-    const hanging = Math.max(1, Math.min(3.4, onFloor))
-    return st.contact * hanging + (1 - st.contact) * (1.2 + (AIR_REACH - 1.2) * grow)
-  }
+  // Arms at their own length on the ground (a touch longer the better your arms), flung
+  // out a little longer in the air.
+  const reach = () => st.contact * (1 + 0.1 * grow) + (1 - st.contact) * (1.12 + (AIR_REACH - 1.12) * grow)
   add('ArmL1', st.l, st.out * OUT_L, 0, w)
   add('ArmR1', st.r, st.out * OUT_R, 0, w)
   pose.stretchL += (reach(st.l) - 1) * w
@@ -199,68 +185,62 @@ function airborne(vy) {
 }
 
 /**
- * Rubber-arm pull-ups (`phase` advances one rep every TRAIN_INTERVAL): hanging from the
- * bar with your feet on the mat, your arms stretched long like rubber bands, then
- * hauling yourself up as they snap short - knees tucking - and dropping back down.
+ * Seated dumbbell presses on a training bench (`phase` advances one rep every
+ * TRAIN_INTERVAL): sitting on the seat (SEAT lower than standing), thighs level, shins
+ * down, a dumbbell in each hand (the rubber arms carry them: armStyles), pushed up from
+ * the shoulders to overhead - quick up, slower down - the head tipping back to watch.
  */
-function pullUps(phase, w, barY = BAR.y) {
-  // 0 hanging low, 1 at the top: quick up, slower down.
+const SEAT_DROP = 0.36
+function benchPress(phase, w) {
+  // 0 at the shoulders, 1 pressed overhead.
   const c = 0.5 - 0.5 * Math.cos(phase)
   const up = Math.pow(c, 0.8)
-  const lift = up * 0.55
-  pose.lift += lift * w
-  add('LegL1', -0.35 * up, 0.05 * OUT_L, 0, w)
-  add('LegR1', -0.35 * up, 0.05 * OUT_R, 0, w)
-  add('LegL2', 0.7 * up + 0.05, 0, 0, w)
-  add('LegR2', 0.7 * up + 0.05, 0, 0, w)
-  add('Spine1', -0.06 + 0.1 * up, 0, 0, w)
-  add('Neck1', -0.25 * up, 0, 0, w)
-  // The hands stay on the bar: the arms reach it from wherever the shoulders are.
-  const reach = barY - (BODY.shoulderY + lift)
-  aimArms(BAR.x - BODY.shoulderX, Math.max(BODY.arm * 0.95, reach), 0.08, 0, w)
+  pose.lift -= SEAT_DROP * w
+  add('LegL1', -1.45, 0.12 * OUT_L, 0, w)
+  add('LegR1', -1.45, 0.12 * OUT_R, 0, w)
+  add('LegL2', 1.45, 0, 0, w)
+  add('LegR2', 1.45, 0, 0, w)
+  add('Spine1', -0.04 - 0.06 * up, 0, 0, w)
+  add('Neck1', -0.08 - 0.14 * up, 0, 0, w)
+  aimArms(0.34 - 0.04 * up, 0.14 + 0.56 * up, 0.12 - 0.06 * up, -0.04 - 0.06 * up, w)
 }
 
 /**
- * Gripping the launch posts and leaning back against the rubber (`strain` 0-1, how far
- * it's pulled): legs braced, one forward and one back, heels digging in, and both arms
- * stretched forward to the grips `grip` metres ahead of your feet. The body itself is
- * walked back by its holder (Player); this is the pose within. At full stretch the
- * rubber twangs, and the arms shiver with it.
+ * Whirling round the spin bar: both hands on it, `hang` metres up from your middle (the
+ * holder turns the whole body round the bar), arms stretched up to it like rubber, body
+ * long and legs together - piking at the knees and hips as you swing through, more the
+ * faster you go (`speed` 0-1), the legs whipping behind like a gymnast's.
  */
-function pulling(grip, strain, time, w) {
-  const lean = -(0.12 + 0.34 * strain)
-  add('Spine1', lean, 0, 0, w)
-  add('Neck1', 0.22 * strain, 0, 0, w)
-  // Feet shuffling back as the rubber pulls (only while it's still stretching).
-  const step = Math.sin(strain * 19) * 0.25 * (1 - smooth(0.85, 1, strain))
-  add('LegL1', -0.55 - 0.2 * strain + step, 0.09 * OUT_L, 0, w)
-  add('LegL2', 0.35, 0, 0, w)
-  add('LegR1', 0.45 + 0.2 * strain - step, 0.09 * OUT_R, 0, w)
-  add('LegR2', 0.25 + 0.2 * strain, 0, 0, w)
-  pose.lift -= (0.05 + 0.08 * strain) * w
-  // The shoulders, swung back by the lean about the hips.
-  const torso = BODY.shoulderY - BODY.pivot
-  const shoulderY = BODY.pivot + torso * Math.cos(lean) - (0.05 + 0.08 * strain)
-  const shoulderZ = torso * Math.sin(lean)
-  const shiver = Math.sin(time * 47) * 0.04 * smooth(0.9, 1, strain)
-  aimArms(GRIP.x - BODY.shoulderX, GRIP.y - shoulderY + shiver, grip - shoulderZ, lean, w)
+function hanging(hang, speed, time, w) {
+  const whip = Math.sin(time * 11) * 0.12 * speed
+  add('Spine1', -0.08 - 0.1 * speed, 0, 0, w)
+  add('Neck1', -0.25, 0, 0, w)
+  add('LegL1', -0.25 * speed + whip, 0.03 * OUT_L, 0, w)
+  add('LegR1', -0.25 * speed + whip, 0.03 * OUT_R, 0, w)
+  add('LegL2', 0.15 + 0.35 * speed, 0, 0, w)
+  add('LegR2', 0.15 + 0.35 * speed, 0, 0, w)
+  // The hands stay on the bar: the arms reach it from the shoulders, straight up.
+  const up = Math.max(BODY.arm * 0.95, hang - (BODY.shoulderY - BODY.pivot))
+  aimArms(GRIP.x - BODY.shoulderX, up, 0, -0.08 - 0.1 * speed, w)
 }
 
 /**
- * Slung forward by the rubber: the body dives (its holder turns it `pitch` radians
- * forward about the hips) while the hands still hold the grips `grip` metres ahead of
- * the feet - the arms snapping short - until it passes them.
+ * Somersaulting through the air (the holder turns the body head over heels): knees hugged
+ * to the chest, rubber arms wrapped round the shins, chin tucked - a cannonball.
  */
-function snapping(grip, pitch, w) {
-  add('Spine1', 0.1, 0, 0, w)
-  add('LegL1', 0.2, 0.05 * OUT_L, 0, w)
-  add('LegR1', 0.2, 0.05 * OUT_R, 0, w)
-  add('Neck1', -0.6 * Math.sin(pitch), 0, 0, w)
-  // The shoulder, turned forward about the hips with the body.
-  const torso = BODY.shoulderY - BODY.pivot
-  const shoulderY = BODY.pivot + torso * Math.cos(pitch)
-  const shoulderZ = torso * Math.sin(pitch)
-  aimArms(GRIP.x - BODY.shoulderX, GRIP.y - shoulderY, Math.max(0.05, grip - shoulderZ), pitch + 0.1, w)
+function tucked(time, w) {
+  const wobble = Math.sin(time * 9) * 0.06
+  add('Spine1', 0.55, 0, 0, w)
+  add('Neck1', 0.35, 0, 0, w)
+  add('LegL1', -2.1, 0.12 * OUT_L, 0, w)
+  add('LegR1', -2.1, 0.12 * OUT_R, 0, w)
+  add('LegL2', 2.2, 0, 0, w)
+  add('LegR2', 2.2, 0, 0, w)
+  add('ArmL1', -0.9 + wobble, 0.25 * OUT_L, 0, w)
+  add('ArmR1', -0.9 - wobble, 0.25 * OUT_R, 0, w)
+  add('ArmL2', -1.2, 0, 0, w)
+  add('ArmR2', -1.2, 0, 0, w)
+  pose.lift += 0.25 * w
 }
 
 /**
@@ -321,13 +301,14 @@ function cheering(time, w) {
  *   vy?: number, stride?: number, run?: number, grip?: number, strain?: number,
  *   pitch?: number, fly?: number, reach?: number, sprawl?: number, cheer?: number,
  *   emote?: string|null }} motion
- *   `run` (0-1) is doing pull-ups on a bar (`stride` is the rep's phase); the name is the
- *   template's, and what other players are told ('run').
- *   `grip` is how far ahead of your feet the launch posts' grips are while you hold them
- *   (below 0: not holding); `strain` (0-1) how hard you're pulling back on them, and
- *   `pitch` how far the body is dived forward by its holder (radians).
- *   `fly` (0-1) is the superhero flight, its arms `reach` times their length; `sprawl`
- *   (0-1) lying where you landed and `cheer` (0-1) up and celebrating.
+ *   `run` (0-1) is pressing dumbbells on a training bench (`stride` is the rep's phase);
+ *   the name is the template's, and what other players are told ('run').
+ *   `grip` is how far up from your middle the spin bar is while you hold it (below 0:
+ *   not holding); `strain` (0-1) how fast you're whirling round it. The holder turns the
+ *   body round the bar itself.
+ *   `tuck` (0-1) is somersaulting in the air, `fly` (0-1) the superhero glide, its arms
+ *   `reach` times their length; `sprawl` (0-1) lying where you landed and `cheer` (0-1)
+ *   up and celebrating.
  *   `emote` is a Boxity emote id to play over this pose, or null. It isn't posed here:
  *   the Bloxity avatar blends the emote clip on top of this pose (avatarRig.updateEmote),
  *   so the same motion object drives both. `emoteFromAnim(r.anim)` in bloxity/emotes.js
@@ -344,7 +325,7 @@ export function computePose(motion) {
     run = 0,
     grip = -1,
     strain = 0,
-    pitch = 0,
+    tuck = 0,
     fly = 0,
     reach = 1.4,
     sprawl = 0,
@@ -360,22 +341,22 @@ export function computePose(motion) {
   pose.stretchL = 1
   pose.stretchR = 1
 
-  // A launch: holding the posts (upright or diving), flying, sprawled, cheering.
+  // A launch: whirling round the bar, somersaulting, flying, sprawled, cheering.
   if (grip >= 0) {
-    if (pitch > 0.02) snapping(grip, pitch, 1)
-    else pulling(grip, strain, time, 1)
+    hanging(grip, strain, time, 1)
     return pose
   }
-  if (fly > 0 || sprawl > 0 || cheer > 0) {
+  if (tuck > 0 || fly > 0 || sprawl > 0 || cheer > 0) {
+    if (tuck > 0) tucked(time, tuck)
     if (fly > 0) flying(time, reach, fly)
     if (sprawl > 0) sprawled(time, sprawl)
     if (cheer > 0) cheering(time, cheer)
-    const rest = clamp01(1 - fly - sprawl - cheer)
+    const rest = clamp01(1 - tuck - fly - sprawl - cheer)
     if (rest > 0) stance(rest, time)
     return pose
   }
   if (run > 0 && grounded) {
-    pullUps(phase, clamp01(run), motion.barY)
+    benchPress(phase, clamp01(run))
     return pose
   }
   const ratio = grounded ? clamp01(speed / Math.max(maxSpeed, 0.001)) : 0

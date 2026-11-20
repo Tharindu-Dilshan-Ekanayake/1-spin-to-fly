@@ -9,6 +9,27 @@
    * and floored so touch targets stay usable on phones.
    */
   --px: clamp(0.3px, min(100vw / 1920, 100vh / 1080), 1.4px);
+  /* The ad safe zone (ui/adSafeZone.js): space the portal's screen ads take round a panel. */
+  --ad-x: 0px;
+  --ad-top: 0px;
+  --ad-bottom: 0px;
+}
+
+/*
+ * A popup's own HUD unit: the usual one, shrunk when the room left between the ads is
+ * narrower than the panel (its --panel-w reference px plus the close button's overhang)
+ * or much shorter than a typical panel (taller ones scroll), so the whole popup scales
+ * down and stays in the safe zone.
+ */
+.pp-panel-scale {
+  --px: max(
+    0.25px,
+    min(
+      clamp(0.3px, min(100vw / 1920, 100vh / 1080), 1.4px),
+      (100vw - 2 * var(--ad-x) - 24px) / (var(--panel-w) + 90),
+      (100vh - var(--ad-top) - var(--ad-bottom) - 24px) / 760
+    )
+  );
 }
 
 /*
@@ -32,6 +53,22 @@
   right: calc(var(--px) * 24);
   top: 34%;
 }
+/*
+ * The spin meter (RollButton.jsx): on the right edge, halfway down - clear of you, the
+ * SPIN BAR sign and the LAUNCH button, where the pass buttons used to be. Its distance tag
+ * reads to its left, towards the middle, so it never runs off the screen.
+ */
+.hud-spin-meter {
+  right: calc(var(--px) * 70);
+  top: 50%;
+  margin-top: calc(var(--px) * -260);
+}
+/* Spinning on the bar: what does nothing there steps aside, clearing the meter and TAP TO FLY. */
+body.pp-spinning .hud-passes,
+body.pp-spinning .touch-joy-zone,
+body.pp-spinning .touch-jump {
+  visibility: hidden;
+}
 /* The stick's resting spot and the jump button (TouchControls.jsx). */
 .touch-joy-rest {
   top: calc(100% - 129px);
@@ -46,6 +83,16 @@
     /* Upright: sized to the width, as if the screen were 1000 reference px wide. */
     --px: clamp(0.3px, min(100vw / 1000, 100vh / 1900), 1.4px);
   }
+  .pp-panel-scale {
+    --px: max(
+      0.25px,
+      min(
+        clamp(0.3px, min(100vw / 1000, 100vh / 1900), 1.4px),
+        (100vw - 2 * var(--ad-x) - 24px) / (var(--panel-w) + 90),
+        (100vh - var(--ad-top) - var(--ad-bottom) - 24px) / 760
+      )
+    );
+  }
   .hud-topcenter {
     top: calc(var(--px) * 96);
   }
@@ -57,6 +104,11 @@
   }
   .hud-passes {
     top: calc(var(--px) * 420);
+  }
+  /* Upright: still on the right edge, a little above halfway, clear of the HUD below. */
+  .hud-spin-meter {
+    right: calc(var(--px) * 40);
+    top: 42%;
   }
   /* Above the Health bar, which runs the whole width along the bottom. */
   .touch-joy-rest {
@@ -135,9 +187,77 @@ canvas {
     transform: translate(-30px, 8px) rotate(-4deg);
   }
 }
-.pp-loading-disc {
-  animation: pp-fly 2.4s ease-in-out infinite;
+/*
+ * The loading screen (LoadingScreen.jsx): the logo bobs, its little player whirls round
+ * the bar, sparkles twinkle, clouds drift across, and the progress bar's stripes scroll.
+ * All transforms and opacity: the compositor runs them while the game loads.
+ */
+.pp-load-logo {
+  animation: pp-load-bob 2.2s ease-in-out infinite;
   filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.25));
+}
+@keyframes pp-load-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.pp-load-spinner {
+  transform-box: view-box;
+  transform-origin: 100px 69px;
+  animation: pp-load-spin 0.9s linear infinite;
+}
+@keyframes pp-load-spin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+.pp-load-sparkles {
+  animation: pp-load-twinkle 1.2s ease-in-out infinite;
+}
+@keyframes pp-load-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pp-load-cloud {
+  position: absolute;
+  left: -260px;
+  width: 220px;
+  height: 70px;
+  border-radius: 40px;
+  background: #ffffff;
+  opacity: 0.9;
+  box-shadow:
+    60px -28px 0 8px #ffffff,
+    120px -6px 0 -4px #ffffff;
+  animation: pp-load-cloud linear infinite;
+  pointer-events: none;
+}
+@keyframes pp-load-cloud {
+  to {
+    translate: calc(100vw + 520px) 0;
+  }
+}
+.pp-load-fill {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 14px, transparent 14px 28px) 0 0 / 40px 40px,
+    linear-gradient(180deg, #b6ff6a 0%, #57e83a 50%, #19b52a 100%);
+  animation: pp-load-stripes 0.8s linear infinite;
+}
+@keyframes pp-load-stripes {
+  to {
+    background-position:
+      40px 0,
+      0 0;
+  }
 }
 
 /* Chunky press feel for every HUD button. */
@@ -434,8 +554,21 @@ canvas {
 .pp-perfect.pp-perfect-on {
   visibility: visible;
 }
-.pp-perfect-on .pp-perfect-flash {
+/*
+ * Kept warm (HitFlash.jsx, the grade cards): the card is "visible" while everything in
+ * it sits at opacity 0, so the browser rasterizes its layers once, up front - nothing
+ * shows - and not in the frame the first PERFECT lands in (measured: a ~1 s dip to ~35 FPS
+ * on the first launch otherwise).
+ */
+.pp-perfect.pp-perfect-warm {
+  visibility: visible;
+}
+.pp-perfect-flash {
+  opacity: 0;
+  will-change: opacity;
   background: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 236, 160, 0.6) 35%, rgba(255, 160, 40, 0) 75%);
+}
+.pp-perfect-on .pp-perfect-flash {
   animation: pp-perfect-flash 0.45s ease-out forwards;
 }
 @keyframes pp-perfect-flash {
@@ -580,4 +713,23 @@ canvas {
     opacity: 0;
     transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(220deg);
   }
+}
+
+/*
+ * TAP TO FLY! on the spin bar breathes in and out, so it reads as what to do. A transform
+ * only: the compositor runs it without touching layout or paint.
+ */
+@keyframes pp-tap-fly {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+.pp-tap-fly {
+  display: inline-block;
+  will-change: transform;
+  animation: pp-tap-fly 0.7s ease-in-out infinite;
 }

@@ -15,6 +15,8 @@ import { createPaintedSigns } from './signs'
 import { buildRollZone } from './rollZone'
 import { buildPads, buildShop } from './structures'
 import { buildHills } from './hills'
+import { buildRoyalPalace } from './palace'
+import { buildSunsetCove } from './sunset'
 import { addScoreboard } from './terrain'
 
 /**
@@ -86,13 +88,17 @@ export function World() {
     const set = new BlockSet()
     // Candy mesas all round the canyon (sandstone at Palm Beach), the scoreboard on the south one.
     buildHills(set, { density: decorDensity, venue: venueOf(world) })
-    addScoreboard(set, venueOf(world))
     const propBuilder = new PropBuilder()
+    // Green Valley's royal palace carries the game's name on its keep; elsewhere, the scoreboard.
+    if (venueOf(world).palace) buildRoyalPalace(set, propBuilder, { density: decorDensity })
+    else addScoreboard(set, venueOf(world))
     buildPads(set, propBuilder)
     buildShop(set, { detail: decorDensity >= 0.75, world })
     buildRollZone(set, propBuilder, { detail: decorDensity >= 0.75, world })
     buildPortalFrame(set)
     buildEggStands(set)
+    // Shipwreck Cove's sunset beach: the wreck, tiki torches, umbrellas.
+    if (venueOf(world).beach) buildSunsetCove(set, propBuilder, { density: decorDensity })
 
     const map = createGroundMap(maxTexture, world)
     const groundMaterial = createToyMaterial({ instanced: false, vertexColors: false, map, studScale: 2 })

@@ -101,7 +101,7 @@ export function TouchControls() {
   return (
     <>
       <div
-        className="absolute bottom-0 left-0 z-10 h-[62%] w-[42%] touch-none"
+        className="touch-joy-zone absolute bottom-0 left-0 z-10 h-[62%] w-[42%] touch-none"
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

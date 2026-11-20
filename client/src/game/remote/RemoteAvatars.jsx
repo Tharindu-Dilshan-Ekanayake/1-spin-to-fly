@@ -2,18 +2,18 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Vector3 } from 'three'
 
-import { LAUNCH_STAND, PAD_YAW, padAt, padBarHeight } from '@shared/world'
+import { benchSeatZ, padCenterX, PAD_YAW, padAt } from '@shared/world'
 
 import { remotePlayers } from '../../net/remotePlayers'
 import { getQuality } from '../../store/quality'
 import { emoteFromAnim } from '../../bloxity/emotes'
 import { RUN_CADENCE } from '../kick'
-import { BODY, GRIP } from '../playerPose'
+import { BODY } from '../playerPose'
 import { BloxityAvatar } from '../PlayerAvatar'
-import { levelCap } from '@shared/balance'
+import { levelCap, spinRate } from '@shared/balance'
 
 import { armGrowth } from '../armStyles'
-import { flierTurn, maxPullFor } from '../roll/path'
+import { flierTurn, hangFor } from '../roll/path'
 
 /** How often the set of fully drawn players is reconsidered. */
 const PICK_MS = 500
@@ -21,11 +21,12 @@ const PICK_MS = 500
 const MAX_SPEED = 10.875
 const _up = new Vector3(0, 1, 0)
 const _hip = new Vector3()
+const _spinTurn = { pitch: 0, roll: 0 }
 
 /**
  * One other player as their real Bloxity avatar, dressed as they are - arms painted as
  * the arms they've equipped - and posed by the same playerPose as yours, from what the
- * network says they're doing: walking pace, pull-ups on a bar, jumping, stretching back
+ * network says they're doing: walking pace, dumbbell presses on a bench, jumping, spinning
  * on the launch posts. Their launches fly the avatar itself down the runway, replayed
  * from the same numbers as yours (RemotePlayers works the flight out: `r.flight`).
  */
@@ -49,6 +50,7 @@ function RemoteAvatar({ sessionId, look }) {
     m.strain = 0
     m.pitch = 0
     m.fly = 0
+    m.tuck = 0
     m.sprawl = 0
     m.cheer = 0
     m.run = 0
@@ -56,7 +58,7 @@ function RemoteAvatar({ sessionId, look }) {
     m.grow = armGrowth(r.tireId, r.level, levelCap(r.rebirths || 0))
 
     if (r.flying) {
-      // Their launch: slung past the posts and flying down the runway, diving about their
+      // Their launch: whirled off the bar and flying down the runway, turning about their
       // middle - the group under it, the avatar turned about it.
       const st = r.flight
       group.position.set(st.position.x, st.position.y - BODY.pivot, st.position.z)
@@ -68,6 +70,7 @@ function RemoteAvatar({ sessionId, look }) {
       m.strain = st.strain
       m.pitch = st.pitch
       m.fly = st.fly
+      m.tuck = st.tuck
       m.sprawl = st.sprawl
       m.cheer = st.cheer
       m.reach = 1.5
@@ -80,21 +83,28 @@ function RemoteAvatar({ sessionId, look }) {
     inner.quaternion.identity()
     group.position.copy(r.position)
     const running = r.anim === 'run'
-    if (r.pulling) {
-      // Stretching back on the posts: they're where they've walked back to, facing down
-      // the runway, arms reaching to the grips.
-      const back = Math.max(0, r.position.z - LAUNCH_STAND.z)
-      group.quaternion.setFromAxisAngle(_up, Math.PI)
-      m.grip = GRIP.ahead + back
-      m.strain = Math.min(1, back / maxPullFor(r.tireId, r.level, levelCap(r.rebirths || 0)))
+    if (r.pulling && r.spinPos) {
+      // Whirling round the spin bar (RemotePlayers advances r.spin): turned about their
+      // middle, which swings round the bar.
+      _spinTurn.pitch = r.spin
+      group.position.set(r.spinPos.x, r.spinPos.y - BODY.pivot, r.spinPos.z)
+      group.quaternion.identity()
+      flierTurn(_spinTurn, inner.quaternion)
+      _hip.set(0, BODY.pivot, 0).applyQuaternion(inner.quaternion)
+      inner.position.set(-_hip.x, BODY.pivot - _hip.y, -_hip.z)
+      m.grip = hangFor(r.spinRate)
+      m.strain = Math.min(1, r.spinRate / spinRate(1))
+      m.tuck = 0
       m.speed = 0
       m.grounded = true
       return
     }
     group.quaternion.setFromAxisAngle(_up, running ? PAD_YAW : r.yaw)
-    // Under a bar: rubber-arm pull-ups, as yours does.
+    // On a training bench: dumbbell presses, as yours does.
     m.run = running ? 1 : 0
-    m.barY = running ? padBarHeight(padAt(r.position.x, r.position.z, 1)) : undefined
+    // Training: sitting on that pad's bench, where they stood along it.
+    const pad = running ? padAt(r.position.x, r.position.z, 1) : -1
+    if (pad >= 0) group.position.set(padCenterX(pad), r.position.y, benchSeatZ(pad, r.position.z))
 
     const speed = running ? 0 : r.speed
     m.speed = speed

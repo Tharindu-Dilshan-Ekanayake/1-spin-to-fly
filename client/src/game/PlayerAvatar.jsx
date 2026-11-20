@@ -82,7 +82,7 @@ function fallbackMotion(delta) {
  *   an object beside the avatar that gets moved onto the right palm every frame, for
  *   anything held. `onStep` reports loading progress. `armsId`, if given, is asked every
  *   frame which arms (shared/balance.js TIRES id) this player wears: their arms are
- *   painted to match (armStyles.js) - the starter Noodle Arms keep the avatar's own skin.
+ *   painted to match (armStyles.js).
  */
 export const BloxityAvatar = forwardRef(function BloxityAvatar(
   { equipped, proportions, onReady, onStep, targetHeight = 1.8, motionRef, handRef, emoteSource, armsId, local = false, ...props },
@@ -303,6 +303,8 @@ export const BloxityAvatar = forwardRef(function BloxityAvatar(
         // Rubber arms instead of the blocky ones (not on a custom character).
         const shown = rubberArms ? placeRubberArms(rig, rubberArms, !custom) : false
         rubberArms?.setArm(id)
+        // On a training bench: a dumbbell in each hand.
+        rubberArms?.setHolding((motion.run ?? 0) > 0 && motion.grounded !== false)
         setArmLook(bodyRef.current?.material, id, shown)
       }
     } catch {

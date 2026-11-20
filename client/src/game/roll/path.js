@@ -1,9 +1,9 @@
 import { Euler, Quaternion, Vector3 } from 'three'
 
-import { ROLL_LAUNCH } from '@shared/balance'
-import { maxPullFor, SLOPE_ANGLE, TRACK_START_Z } from '@shared/world'
+import { ROLL_LAUNCH, spinRate } from '@shared/balance'
+import { LAUNCH_POSTS, SLOPE_ANGLE, SPIN_BAR, TRACK_START_Z } from '@shared/world'
 
-import { BODY, GRIP } from '../playerPose'
+import { BODY } from '../playerPose'
 
 /**
  * Geometry of a launch: one long, straight runway running north from the plaza's edge,
@@ -69,27 +69,54 @@ const smooth = (a, b, x) => {
   return t * t * (3 - 2 * t)
 }
 
-/** How far back you can walk holding the posts, at full stretch, with the starter arms (metres). */
-export const PULL_DIST = 3.6
-/** How far back arms let you walk (shared/world maxPullFor: the server checks it too). */
-export { maxPullFor }
-
-/** The flight sets off this far ahead of where you stood: just past the posts. */
-export const PUSH_AHEAD = GRIP.ahead + 0.6
-/** Seconds into a launch that you fly past the posts: the snap takes the whole launch. */
-export const KICK_HIT = ROLL_LAUNCH
-/** Let go, you hang on - straining, arms at full stretch - for this share of the snap. */
-const SNAP_HOLD = 0.16
-/** Lying flat, how high your middle (the pivot you dive about) is off the ground. */
-export const BODY_FLAT = 0.3
-/** Your middle's height off the ground standing, less BODY_FLAT: the flight starts there. */
-const LAUNCH_AIR = BODY.pivot - BODY_FLAT
-/** How big the flier reads to the trail and effects (they were sized for the ball). */
-export const TIRE_SIZE = 0.6
+// --- The spin bar ------------------------------------------------------------------
 
 /**
- * The flight takes LAND_T of the launch's time after the snap; the rest is belly-flopping
- * onto the turf, bouncing and getting up.
+ * Hanging from the bar, your middle (the pivot the body turns about) is HANG below it;
+ * whirling at full speed the rubber arms stretch it out to HANG_FAST. Never so far the
+ * feet touch the pad.
+ */
+export const HANG = 1.35
+export const HANG_FAST = 1.8
+/** How far your middle hangs below the bar, whirling at `rate` (radians a second). */
+export const hangFor = (rate) => HANG + (HANG_FAST - HANG) * Math.min(1, Math.max(0, rate / spinRate(1)))
+/** The bar's metre along the runway (it stands just short of the start line, so negative). */
+export const BAR_METER = TRACK_START_Z - LAUNCH_POSTS.z
+/**
+ * Your middle at angle `spin` round the bar, hanging `hang` below it: metre along the
+ * runway and height. Angle 0 hangs straight down; it runs down as the feet swing forward
+ * under the bar. Writes `{ meter, y }` into `out`.
+ */
+export function barPoint(spin, hang, out) {
+  out.meter = BAR_METER - hang * Math.sin(spin)
+  out.y = SPIN_BAR.y - hang * Math.cos(spin)
+  return out
+}
+/** Where you let go: this angle (mod a turn) - low in front, swinging up, feet first. */
+export const RELEASE_SPIN = -0.6
+/** The last whirl turns at least this far (radians), however you let go. */
+const LAST_WHIRL = Math.PI * 1.5
+
+/** Seconds into a launch that you fly clear of the bar: the last whirl takes the whole launch. */
+export const KICK_HIT = ROLL_LAUNCH
+/** The flight sets off from the release point: this far past the bar. */
+export const PUSH_AHEAD = HANG_FAST * Math.sin(-RELEASE_SPIN)
+/** Lying flat, how high your middle (the pivot you dive about) is off the ground. */
+export const BODY_FLAT = 0.3
+/** How big the flier reads to the trail and effects (they were sized for the ball). */
+export const TIRE_SIZE = 0.6
+/**
+ * Somersaults in the air after letting go, by grade: a WEAK launch barely turns over, a
+ * PERFECT one tumbles head over heels again and again. A rare throw adds more.
+ */
+const TUMBLES = { weak: 1, good: 2, great: 3, perfect: 4 }
+const RARE_TUMBLES = { lucky: 1, secret: 2, mythic: 3 }
+/** The tumbling is over this far into the flight (by distance); then the superhero glide. */
+const TUMBLE_END = 0.62
+
+/**
+ * The flight takes LAND_T of the launch's time after the last whirl; the rest is
+ * belly-flopping onto the turf, bouncing and getting up.
  */
 const LAND_T = 0.86
 /** Belly bounces on the turf after you slam down, over the first SETTLE of the time left. */
@@ -137,70 +164,96 @@ export const createRideState = () => ({
   airborne: false,
   /** 0 in the air; 1 once you've slammed down, then one more for every bounce after. */
   bounces: 0,
-  /** How far the body is dived forward about its middle (0 upright, PI/2 flying flat). */
+  /** How the body is turned head over heels about its middle (0 upright, PI/2 flying flat). */
   pitch: 0,
   /** A barrel roll about the way you're flying (radians). */
   roll: 0,
-  /** Metres from your middle ahead to the posts' grips while you still hold them, else -1. */
+  /** Metres from your middle up to the bar while you still hold it, else -1. */
   grip: -1,
-  /** How hard the rubber is still pulling (0-1), for the pose. */
+  /** How fast you're whirling round the bar (0-1), for the pose. */
   strain: 0,
-  /** Pose weights: flying like a superhero, sprawled where you landed, up and cheering. */
+  /** Pose weights: tucked in a somersault, flying like a superhero, sprawled where you landed, up and cheering. */
+  tuck: 0,
   fly: 0,
   sprawl: 0,
   cheer: 0,
   /** Never true: nothing on the runway stops you. */
   crashed: false,
   x: 0,
-  /** Your middle: the point the body dives and rolls about. */
+  /** Your middle: the point the body turns about. */
   position: new Vector3(),
 })
 
+const _bar = { meter: 0, y: 0 }
+const _whirl = { from: 0, to: 0, lead: 1 }
+
+/**
+ * The last whirl's start and end angles: from `spin` (where you were when the launch
+ * started) round to the release angle at least LAST_WHIRL on, and how much of the turn
+ * is at your starting speed (`lead`: 0-1; the rest speeds up into the release).
+ */
+function lastWhirl(ride) {
+  const from = Number.isFinite(ride.spin) ? ride.spin : 0
+  const rate = Number.isFinite(ride.spinRate) && ride.spinRate > 0 ? ride.spinRate : spinRate(0.8)
+  const turn = Math.PI * 2
+  // The first release angle at least LAST_WHIRL (and a launch's worth at this speed) on.
+  const least = Math.max(LAST_WHIRL, rate * KICK_HIT)
+  const to = RELEASE_SPIN - turn * Math.ceil((RELEASE_SPIN - (from - least)) / turn - 1e-9)
+  const span = Math.max(1e-3, from - to)
+  _whirl.from = from
+  _whirl.to = to
+  _whirl.lead = Math.min(1, (rate * KICK_HIT) / span)
+  return _whirl
+}
+
 /**
  * Everything about a launch `elapsed` seconds in - yours, or another player's replayed
- * from the same numbers, so both fly identically. `ride` is `{ fromMeter, startX,
- * distance, duration, hit, pull }` (duration includes the snap; `pull` is how far back
- * the stretch had walked them, in metres - PULL_DIST if unknown); `lane` is a sideways
- * offset so fliers don't overlap. Writes into `out` (see createRideState):
- *   phase    'launch' (the rubber snapping you forward) | 'ride' | 'stopped'
+ * from the same numbers, so both fly identically. `ride` is `{ startX, distance,
+ * duration, hit, rare, spin, spinRate }` (duration includes the last whirl; `spin` and
+ * `spinRate` are the angle and speed round the bar the launch started from - another
+ * player's aren't sent, so theirs start from hanging); `lane` is a sideways offset so
+ * fliers don't overlap. Writes into `out` (see createRideState):
+ *   phase    'launch' (the last whirl round the bar) | 'ride' | 'stopped'
  *   meter    metres along the runway; speed in m/s along it
  *   position your middle; pitch and roll say how the body lies
  */
 export function rideState(elapsed, ride, lane, out) {
-  const start = ride.fromMeter + PUSH_AHEAD
+  const whirl = lastWhirl(ride)
+  barPoint(whirl.to, HANG_FAST, _bar)
+  const start = _bar.meter
+  const startAir = _bar.y - BODY_FLAT
   const end = Math.max(start + 1, ride.distance)
   const flightTime = Math.max(0.1, ride.duration - KICK_HIT)
-  const back = Number.isFinite(ride.pull) ? ride.pull : PULL_DIST
+  const tumbles = (TUMBLES[ride.hit] ?? 2) + (RARE_TUMBLES[ride.rare] ?? 0)
   let meter
   let speed = 0
-  let air = LAUNCH_AIR
+  let air
   out.airborne = false
   out.crashed = false
   out.bounces = 0
   out.grip = -1
   out.strain = 0
+  out.tuck = 0
   out.fly = 0
   out.sprawl = 0
   out.cheer = 0
   out.roll = 0
   if (elapsed < KICK_HIT) {
-    // The snap: hanging on a beat at full stretch, then slung forward - faster and
-    // faster - diving flat as you go, the arms snapping short until you pass the posts.
+    // The last whirl: round the bar at the speed you were going, faster and faster, the
+    // arms stretching out, until you're flung off the front.
     out.phase = 'launch'
     const u = clamp01(elapsed / KICK_HIT)
     out.launch = u
-    const k = clamp01((u - SNAP_HOLD) / (1 - SNAP_HOLD))
-    const from = ride.fromMeter - back
-    meter = from + (start - from) * k * k
-    speed = (2 * k * (start - from)) / ((1 - SNAP_HOLD) * KICK_HIT)
-    out.pitch = (Math.PI / 2) * smooth(0.3, 1, k)
-    const ahead = ride.fromMeter + GRIP.ahead - meter
-    if (ahead > 0.35) {
-      out.grip = ahead
-      out.strain = (1 - k) * Math.min(1, back / PULL_DIST)
-    } else {
-      out.fly = 1
-    }
+    const h = whirl.lead * u + (1 - whirl.lead) * u * u
+    const spin = whirl.from + (whirl.to - whirl.from) * h
+    const hang = HANG + (HANG_FAST - HANG) * Math.min(1, 0.6 + 0.4 * u)
+    barPoint(spin, hang, _bar)
+    meter = _bar.meter
+    air = _bar.y - BODY_FLAT
+    speed = ((whirl.from - whirl.to) * (whirl.lead + 2 * (1 - whirl.lead) * u) * hang) / KICK_HIT
+    out.pitch = spin
+    out.grip = hang
+    out.strain = 1
   } else {
     const t = (elapsed - KICK_HIT) / flightTime
     out.launch = 1
@@ -210,13 +263,20 @@ export function rideState(elapsed, ride, lane, out) {
       const f = progress(t / LAND_T)
       meter = start + (end - start) * f
       speed = ((end - start) * (1.5 - t / LAND_T)) / (LAND_T * flightTime)
-      air = LAUNCH_AIR * (1 - f) + peak * 4 * f * (1 - f)
+      air = startAir * (1 - f) + peak * 4 * f * (1 - f)
       out.airborne = true
-      // Nose up as you leave the posts, level at the top, nose down coming in to land.
-      out.pitch = Math.PI / 2 - 0.3 + 0.55 * f
-      out.fly = 1
-      // A PERFECT launch barrel-rolls once on the way up; the rest just sway.
-      out.roll = ride.hit === 'perfect' ? Math.PI * 2 * smooth(0.12, 0.5, f) : Math.sin(f * 9) * 0.14
+      // Flung off feet first, somersaulting head over heels - fast off the bar, slowing -
+      // then opening out into a superhero glide, nose up, then down into the landing.
+      const glide = Math.PI / 2 - 0.3 + 0.55 * f
+      const tumbleTo = Math.PI / 2 - 0.3 + 0.55 * TUMBLE_END - Math.PI * 2 * tumbles
+      const g = clamp01(f / TUMBLE_END)
+      const eased = 1 - (1 - g) * (1 - g) * (1 - g)
+      out.pitch = f < TUMBLE_END ? whirl.to + (tumbleTo - whirl.to) * eased : glide
+      const open = smooth(TUMBLE_END * 0.55, TUMBLE_END, f)
+      out.tuck = 1 - open
+      out.fly = open
+      // A PERFECT launch barrel-rolls once in the glide too; the rest just sway.
+      out.roll = ride.hit === 'perfect' ? Math.PI * 2 * smooth(TUMBLE_END, 0.85, f) : Math.sin(f * 9) * 0.14 * open
     } else {
       // Down on the turf: belly bounces, each lower, then lying there a moment.
       meter = end
@@ -230,7 +290,7 @@ export function rideState(elapsed, ride, lane, out) {
       // Up on your feet to celebrate.
       const stand = smooth(0, STAND_UP, elapsed - ride.duration)
       out.pitch = (Math.PI / 2) * (1 - stand)
-      air = LAUNCH_AIR * stand
+      air = (BODY.pivot - BODY_FLAT) * stand
       out.sprawl = 1 - stand
       out.cheer = stand
     }

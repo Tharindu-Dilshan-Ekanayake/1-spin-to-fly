@@ -10,7 +10,7 @@ import {
   Vector3,
 } from 'three'
 
-import { LAUNCH_STAND, MAX_PULL, ROLL_ZONE, SHOP_SIGN, SHOP_SIGN_FACING } from '@shared/world'
+import { ROLL_ZONE, SHOP_SIGN, SHOP_SIGN_FACING } from '@shared/world'
 
 import { venueOf } from '../sceneStyle'
 import { DECAL_Y, DIGIT, DIRECTIONS, END_ZONE_TEXT, LOGO, yardNumbers } from './pitch'
@@ -161,38 +161,61 @@ function paintLogo(ctx, [rx, ry, size], logo) {
     ctx.fill()
     ctx.restore()
   }
-  // The emblem: a rubber arm at full stretch snaking up to a big golden fist (the same
-  // art as the game's icon, ui/icons.js), ringed like a rubber band.
+  // The emblem: a figure whirling round a bar - the bar across the middle, two sweeping
+  // arrows round it and a golden star where you'd be flung off.
   ctx.save()
   const k = (size * 0.5) / 100
-  ctx.translate(cx - 50 * k, cy - 52 * k)
+  ctx.translate(cx - 50 * k, cy - 50 * k)
   ctx.scale(k, k)
-  const arm = new Path2D('M16 88C20 62 50 72 48 50S60 32 66 31')
   ctx.lineCap = 'round'
-  ctx.strokeStyle = '#1b1b1f'
-  ctx.lineWidth = 25
-  ctx.stroke(arm)
-  ctx.strokeStyle = '#ff6ab8'
-  ctx.lineWidth = 15
-  ctx.stroke(arm)
-  ctx.setLineDash([4, 10])
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
-  ctx.stroke(arm)
-  ctx.setLineDash([])
+  const sweep = (from, to) => {
+    ctx.beginPath()
+    ctx.arc(50, 50, 30, from, to)
+    ctx.strokeStyle = '#1b1b1f'
+    ctx.lineWidth = 16
+    ctx.stroke()
+    ctx.strokeStyle = '#4fd8ff'
+    ctx.lineWidth = 9
+    ctx.stroke()
+    // The arrowhead at its end.
+    const ex = 50 + Math.cos(to) * 30
+    const ey = 50 + Math.sin(to) * 30
+    const t = to + Math.PI / 2
+    ctx.beginPath()
+    ctx.moveTo(ex + Math.cos(t) * 12, ey + Math.sin(t) * 12)
+    ctx.lineTo(ex + Math.cos(to) * 11, ey + Math.sin(to) * 11)
+    ctx.lineTo(ex - Math.cos(to) * 11, ey - Math.sin(to) * 11)
+    ctx.closePath()
+    ctx.fillStyle = '#4fd8ff'
+    ctx.fill()
+    ctx.lineWidth = 4
+    ctx.strokeStyle = '#1b1b1f'
+    ctx.stroke()
+  }
+  sweep(Math.PI * 0.15, Math.PI * 0.85)
+  sweep(Math.PI * 1.15, Math.PI * 1.85)
+  // The bar.
   ctx.beginPath()
-  ctx.arc(73, 27, 17, 0, Math.PI * 2)
+  ctx.moveTo(8, 50)
+  ctx.lineTo(92, 50)
+  ctx.strokeStyle = '#1b1b1f'
+  ctx.lineWidth = 12
+  ctx.stroke()
+  ctx.strokeStyle = '#e8eef6'
+  ctx.lineWidth = 6
+  ctx.stroke()
+  // The star you fly off as.
+  ctx.beginPath()
+  for (let i = 0; i < 10; i += 1) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5
+    const r = i % 2 ? 7 : 16
+    ctx.lineTo(78 + Math.cos(a) * r, 18 + Math.sin(a) * r)
+  }
+  ctx.closePath()
   ctx.fillStyle = '#ffcf2e'
   ctx.fill()
-  ctx.lineWidth = 6
+  ctx.lineWidth = 4
   ctx.strokeStyle = '#1b1b1f'
-  ctx.stroke()
-  ctx.lineWidth = 3.5
-  ctx.beginPath()
-  // The gaps between the curled fingers, along the top of the fist.
-  for (const [x0, y0, x1, y1] of [[66, 12, 69, 20], [74, 10, 74, 20], [82, 12, 79, 20]]) {
-    ctx.moveTo(x0, y0)
-    ctx.lineTo(x1, y1)
-  }
   ctx.stroke()
   ctx.restore()
 }
@@ -212,7 +235,7 @@ const ROUND_SIDES = 32
  */
 const cellsFor = (v) => ({
   logo: { rect: [0, 0, 0.5, 0.5], paint: (ctx, r) => paintLogo(ctx, r, v.logo) },
-  arch: { rect: [0.5, 0, 0.5, 0.15], paint: (ctx, r) => paintText(ctx, r, 'STRETCH & FLY', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
+  arch: { rect: [0.5, 0, 0.5, 0.15], paint: (ctx, r) => paintText(ctx, r, 'SPIN & FLY', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
   shop: { rect: [0.5, 0.15, 0.5, 0.13], paint: (ctx, r) => paintText(ctx, r, 'ARM SHOP', { fill: GOLD, edge: '#c2410c', slant: 0.14 }) },
   zone: { rect: [0.5, 0.28, 0.5, 0.12], paint: (ctx, r) => paintText(ctx, r, 'LAUNCH PAD', { fill: NAVY, edge: '#a08a10' }) },
   ...Object.fromEntries(
@@ -230,26 +253,6 @@ const cellsFor = (v) => ({
     ]),
   ),
 })
-
-/**
- * The stretch lane's metre marks (5, 10 ... 40), painted beside its ticks on the west
- * side - over the pad's yellow where they're on it (its top is 0.10), on the path beyond.
- * Every number is made of the digits 0-5, all the atlas has.
- */
-function laneNumbers() {
-  const out = []
-  const w = 1.25
-  for (let m = 5; m <= MAX_PULL; m += 5) {
-    const z = LAUNCH_STAND.z + m
-    const y = z <= ROLL_ZONE.maxZ + 0.8 ? 0.14 : DECAL_Y
-    const digits = String(m).split('').map(Number)
-    digits.forEach((d, i) => {
-      const x = LAUNCH_STAND.x - 4 - (digits.length - 1 - i) * (w + 0.05)
-      out.push({ cell: `digit${d}`, width: w, at: [x, y, z], yaw: 0, flat: true })
-    })
-  }
-  return out
-}
 
 /**
  * Every quad: which cell it shows, its width in the world (its height follows the cell's
@@ -270,10 +273,9 @@ function quadList() {
       flat: false,
     },
     // Over the kick zone's yellow strip (top 0.10) and its navy chevrons (top 0.14).
-    // Either side of the stretch lane down its middle.
+    // Either side of the spin bar, down the pad.
     { cell: 'zone', width: zoneWidth, at: [-8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
     { cell: 'zone', width: zoneWidth, at: [8.6, 0.18, (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 + 0.3], yaw: 0, flat: true },
-    ...laneNumbers(),
     // The logo is drawn as a round disc, not a square, so the yard lines cut back round it
     // never run under its (clear) corners.
     { cell: 'logo', width: LOGO.radius * 2, at: [LOGO.x, DECAL_Y, LOGO.z], yaw: 0, flat: true, round: true },

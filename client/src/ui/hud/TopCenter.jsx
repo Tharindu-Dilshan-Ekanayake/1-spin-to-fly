@@ -5,8 +5,15 @@ import { isMaxLevel, nextTire, zoneIndexAt } from '@shared/logic'
 import { zones } from '../../game/worldLook'
 
 import { useGame } from '../../store/game'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
 import StrokeText from '../StrokeText'
 import { u } from './style'
+
+/** The goal banner shows this long, then hides until it's due again. */
+const SHOW_MS = 8000
+/** It comes back this often. */
+const EVERY_MS = 60000
 
 const BANNER_GRADIENT = 'linear-gradient(180deg, #fff6a8 0%, #ffd52a 45%, #ffa000 100%)'
 const PANEL_GRADIENT = 'linear-gradient(180deg, #ffe45c 0%, #ffc21f 55%, #ff9a12 100%)'
@@ -53,10 +60,13 @@ function TutorialBanner({ step }) {
 }
 
 /**
- * The next goal, always in sight once the tutorial's done - something close enough to
- * chase: rebirth when you're at max level, else the next pair of arms and how far your
- * Wins are from it, else the next stage down the runway past your best flight. A tap
- * opens what it's about.
+ * The next goal once the tutorial's done - something close enough to chase: rebirth when
+ * you're at max level, else the next pair of arms and how far your Cash is from it, else
+ * the next stage down the runway past your best flight. A tap opens what it's about.
+ *
+ * It isn't always on screen: it slides in for SHOW_MS, slides away, and comes back every
+ * EVERY_MS - and straight away when there's news (you can afford the next arms, or you
+ * can rebirth).
  */
 function GoalBanner() {
   const profile = useGame((s) => s.profile)
@@ -65,29 +75,66 @@ function GoalBanner() {
   let text
   let progress = null
   let panel = null
+  /** What the goal is (not its progress): news when it changes to one you can act on. */
+  let goal
   if (isMaxLevel(profile)) {
-    text = `REBIRTH READY! Rebirth for x${rebirthMultiplier(profile.rebirths + 1)} Power`
+    goal = `rebirth:${profile.rebirths}`
+    text = `REBIRTH READY! Rebirth for x${rebirthMultiplier(profile.rebirths + 1)} Strength`
     panel = 'rebirth'
   } else {
     const next = nextTire(profile)
     if (next) {
       const wins = Math.max(0, profile.wins - pending)
+      goal = wins >= next.cost ? `buy:${next.id}` : `arms:${next.id}`
       text = wins >= next.cost ? `You can buy ${next.name}! Visit the Arm Shop` : `Next arms: ${next.name}`
       progress = Math.min(1, wins / Math.max(1, next.cost))
-      if (wins < next.cost) text += ` (${formatNumber(wins)}/${formatNumber(next.cost)} Wins)`
+      if (wins < next.cost) text += ` ($${formatNumber(wins)}/$${formatNumber(next.cost)})`
     } else {
       const stages = zones()
       const nextStage = stages[Math.min(stages.length - 1, zoneIndexAt(profile.stats.bestDistance) + 1)]
+      goal = `stage:${nextStage.id}`
       text = `Next stage: ${nextStage.name} at ${formatDistance(nextStage.start)} (best ${formatDistance(profile.stats.bestDistance)})`
       progress = Math.min(1, profile.stats.bestDistance / Math.max(1, nextStage.start))
     }
   }
+  const [shown, setShown] = useState(true)
+  const hideTimer = useRef(0)
+  // Shows the banner for SHOW_MS (restarting the count if it's up already).
+  const showFor = useCallback(() => {
+    setShown(true)
+    clearTimeout(hideTimer.current)
+    hideTimer.current = setTimeout(() => setShown(false), SHOW_MS)
+  }, [])
+  useEffect(() => {
+    const first = setTimeout(showFor, 0)
+    const every = setInterval(showFor, EVERY_MS)
+    return () => {
+      clearTimeout(first)
+      clearInterval(every)
+      clearTimeout(hideTimer.current)
+    }
+  }, [showFor])
+  // News: you can afford the next arms, or rebirth - show it now, not in a minute.
+  const lastGoal = useRef(goal)
+  useEffect(() => {
+    if (goal === lastGoal.current) return undefined
+    lastGoal.current = goal
+    if (!goal.startsWith('buy:') && !goal.startsWith('rebirth:')) return undefined
+    const id = setTimeout(showFor, 0)
+    return () => clearTimeout(id)
+  }, [goal, showFor])
+
   return (
     <button
       type="button"
       onClick={panel ? () => openPanel(panel) : undefined}
-      className={`${panel ? 'pp-btn pointer-events-auto' : ''} relative flex flex-col items-center overflow-hidden`}
+      aria-hidden={!shown}
+      tabIndex={shown ? 0 : -1}
+      className={`${panel && shown ? 'pp-btn pointer-events-auto' : ''} relative flex flex-col items-center overflow-hidden`}
       style={{
+        transform: shown ? 'translateY(0)' : `translateY(${u(-200)})`,
+        opacity: shown ? 1 : 0,
+        transition: 'transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.3s',
         padding: `${u(6)} ${u(24)} ${u(progress === null ? 6 : 14)}`,
         borderRadius: u(30),
         border: `${u(4)} solid #111`,

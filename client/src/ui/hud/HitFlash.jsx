@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import { HIT_GRADES } from '@shared/balance'
+import { HIT_GRADES, rareThrowById } from '@shared/balance'
 
 import { setHitElement } from '../../game/roll/hudLink'
 import Icon from '../Icon'
@@ -24,7 +24,7 @@ const CARDS = [
     gradient: 'linear-gradient(180deg, #ffffff 0%, #fffbe0 40%, #ffe27a 70%, #ffb21e 100%)',
     rays: null,
     stars: 4,
-    badges: [['NICE FLING!', 'linear-gradient(180deg, #ffffff 0%, #ffe27a 100%)']],
+    badges: [['NICE SPIN!', 'linear-gradient(180deg, #ffffff 0%, #ffe27a 100%)']],
   },
   {
     id: 'great',
@@ -34,8 +34,8 @@ const CARDS = [
     rays: 'rgba(95, 214, 255, 0.45)',
     stars: 6,
     badges: [
-      [`STRONG FLING ${extraDistance('great')}`, 'linear-gradient(180deg, #8affc8 0%, #2fd0ff 100%)'],
-      [`x${bonusOf('great')} WINS`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
+      [`FAST SPIN ${extraDistance('great')}`, 'linear-gradient(180deg, #8affc8 0%, #2fd0ff 100%)'],
+      [`x${bonusOf('great')} CASH`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
     ],
   },
   {
@@ -46,11 +46,45 @@ const CARDS = [
     rays: 'rgba(255, 214, 60, 0.5)',
     stars: 8,
     badges: [
-      [`MEGA FLING ${extraDistance('perfect')}`, 'linear-gradient(180deg, #ff9a3a 0%, #ff3b3b 100%)'],
-      [`x${bonusOf('perfect')} WINS`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
+      [`MEGA SPIN ${extraDistance('perfect')}`, 'linear-gradient(180deg, #ff9a3a 0%, #ff3b3b 100%)'],
+      [`x${bonusOf('perfect')} CASH`, 'linear-gradient(180deg, #fff27a 0%, #ffb21e 100%)'],
     ],
   },
+  // The rare throws' cutscene cards: bigger, brighter and rarer every step.
+  {
+    id: 'lucky',
+    title: 'LUCKY THROW!',
+    size: 170,
+    gradient: 'linear-gradient(180deg, #ffffff 0%, #fff27a 30%, #ffc21f 60%, #ff8a00 100%)',
+    rays: 'rgba(255, 200, 40, 0.55)',
+    stars: 8,
+    badges: [[`x${rareThrowById('lucky').mult} DISTANCE`, 'linear-gradient(180deg, #fff27a 0%, #ff9a1e 100%)'], [`x${rareThrowById('lucky').mult} CASH`, 'linear-gradient(180deg, #b6ff6a 0%, #19b52a 100%)']],
+  },
+  {
+    id: 'secret',
+    title: 'SECRET THROW!',
+    size: 175,
+    gradient: 'linear-gradient(180deg, #ffffff 0%, #e6c8ff 30%, #b07bff 60%, #6a2bff 100%)',
+    rays: 'rgba(170, 110, 255, 0.6)',
+    stars: 8,
+    badges: [[`x${rareThrowById('secret').mult} DISTANCE`, 'linear-gradient(180deg, #e6c8ff 0%, #9a5cff 100%)'], [`x${rareThrowById('secret').mult} CASH`, 'linear-gradient(180deg, #b6ff6a 0%, #19b52a 100%)']],
+  },
+  {
+    id: 'mythic',
+    title: 'MYTHIC THROW!',
+    size: 185,
+    gradient: 'linear-gradient(180deg, #ff6a6a 0%, #ffd21f 22%, #7dff4a 42%, #4fd8ff 62%, #a46bff 80%, #ff4fd8 100%)',
+    rays: 'rgba(255, 90, 220, 0.6)',
+    stars: 8,
+    badges: [[`x${rareThrowById('mythic').mult} DISTANCE`, 'linear-gradient(180deg, #ffb0f4 0%, #ff4fd8 100%)'], [`x${rareThrowById('mythic').mult} CASH`, 'linear-gradient(180deg, #b6ff6a 0%, #19b52a 100%)']],
+  },
 ]
+
+/**
+ * Cards kept rasterized all the time: the grades, which nearly every launch shows. The
+ * rare throws' stay cold (GPU memory): they play in slow motion, which hides a first paint.
+ */
+const WARM = new Set(['good', 'great', 'perfect'])
 
 /** Stars bursting out from behind the title: [angle (deg), distance (ref px), size]. */
 const STARS = [
@@ -66,7 +100,15 @@ const STARS = [
 
 /** One grade's card: a flash, rays wheeling out, the title slamming in, badges, stars. */
 function Card({ card }) {
-  const ref = useCallback((el) => setHitElement(card.id, el), [card.id])
+  const ref = useCallback(
+    (el) => {
+      setHitElement(card.id, el)
+      // The cards every launch can show are kept rasterized, invisibly (index.css
+      // .pp-perfect-warm): painted at the first hit, they stalled that frame for ~1 s.
+      if (el && WARM.has(card.id)) el.classList.add('pp-perfect-warm')
+    },
+    [card.id],
+  )
   const scale = card.size / 200
   return (
     <div ref={ref} className="pp-perfect pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
@@ -106,7 +148,8 @@ function Card({ card }) {
 }
 
 /**
- * A graded hit's moment on screen - GOOD, GREAT or PERFECT, each grander than the last:
+ * A graded hit's moment on screen - GOOD, GREAT or PERFECT, each grander than the last,
+ * and a rare throw's cutscene card (LUCKY, SECRET, MYTHIC):
  * a flash, light rays wheeling out from the middle, the title slamming in, overshooting
  * and settling with a wobble, what the hit earns popping in under it, stars bursting
  * out, then the lot flying up and away as the ball blasts off.

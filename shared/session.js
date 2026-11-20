@@ -1,4 +1,4 @@
-import { comboBonus, crowdBonus, dayNumber, levelCap, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, SHOP, TIRES, TRAIN_INTERVAL, WALK_STEP, ZONES } from './balance.js'
+import { comboBonus, crowdBonus, dayNumber, EGGS, hitGrade, ITEMS, MULTI_HATCH, PADS, ROLL_TICK, rollRareThrow, SHOP, TIRES, TRAIN_INTERVAL, ZONES } from './balance.js'
 import { applyStreak, claimQuest, claimQuestBonus, ensureQuests, progressQuests, questText, rollLuckyGift } from './engage.js'
 import {
   advanceTutorial,
@@ -8,7 +8,6 @@ import {
   applyRoll,
   applyRollTick,
   applyTrain,
-  applyWalkStep,
   awardBadge,
   buyHealthPack,
   buyShopItem,
@@ -17,6 +16,7 @@ import {
   claimSecretStar,
   claimFreeReward,
   claimPlaytime,
+  redeemCode,
   createSession,
   deletePet,
   equipBestPets,
@@ -30,7 +30,7 @@ import {
   usePortal,
   usePotion,
 } from './logic.js'
-import { eggStandNear, FREE_REWARD, inRect, inRollZone, MAX_MOVE_SPEED, MAX_PULL, maxPullFor, pullBackAt, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
+import { eggStandNear, FREE_REWARD, inRect, inRollZone, onPad, portalAt, STAR, standRect, TIRE_STANDS } from './world.js'
 
 const TIRE_INDEX = Object.fromEntries(TIRES.map((t, i) => [t.id, i]))
 /** Reaching Outer Space earns its badge; the last stage has its own. */
@@ -56,10 +56,11 @@ const STAND_SLACK = 2
  * Events emitted (type, payload):
  * - 'profile'  { profile, session }  full state, after anything structural
  * - 'train'    { source, pad, gain, health, level, leveledUp, levels, maxed }  each
- *                Health gain; `source` is 'pad' (pad is its index), 'roll' (while your
- *                tire rolls) or 'walk' (walking round the lobby), pad -1 for both
+ *                Health gain; `source` is 'pad' (pad is its index), 'roll' (ticks while
+ *                you fly), pad -1 for a flight
  * - 'roll'     { distance, wins, prize, discovered, blocked, broken, duration,
- *                multiplier, best, tireId }  a roll to replay
+ *                multiplier, best, tireId, rare }  a launch to replay; `rare` is
+ *                'lucky' | 'secret' | 'mythic' for a rare throw, else null
  * - 'pack'     { amount }  a Health pack landed
  * - 'hatch'    { eggId, pets: [{ uid, id }] }  pets to reveal
  * - 'badge'    { id, name }
@@ -115,10 +116,6 @@ export class PlayerSession {
     /** Server time the current roll stops; Health ticks in until then. */
     this.rollingUntil = 0
     this.rollTimer = 0
-    /** Metres walked towards the next walking gain, and where the player last was. */
-    this.walked = 0
-    this.lastX = null
-    this.lastZ = 0
     this.dirty = false
   }
 
@@ -213,10 +210,9 @@ export class PlayerSession {
       this.session.combo = grade?.id === 'perfect' ? (this.session.combo || 0) + 1 : 0
       const combo = this.session.combo
       const others = Math.max(0, Math.floor(this.getOthers?.() || 0))
-      // How far back down the stretch lane you were (no further than your arms reach).
-      const reach = maxPullFor(this.profile.equippedTire, this.profile.level, levelCap(this.profile.rebirths))
-      const pulled = Math.min(reach + 0.5, pullBackAt(p.x, p.z))
-      const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others), pulled / MAX_PULL)
+      // Now and then a LUCKY, SECRET or MYTHIC throw (better timing, better odds).
+      const rare = rollRareThrow(this.rand, grade?.id ?? null)
+      const result = applyRoll(this.profile, now, accuracy, comboBonus(combo) * crowdBonus(others), rare)
       const gift = rollLuckyGift(this.profile, this.rand)
       this.busyUntil = now + result.cooldown * 1000
       this.rollingUntil = now + result.duration * 1000
@@ -237,7 +233,7 @@ export class PlayerSession {
         combo,
         others,
         gift,
-        stretch: Math.round(pulled * 10) / 10,
+        rare: result.rare,
       })
       this.onRoll?.(result)
       this.quest('launch', 1, now)
@@ -326,7 +322,18 @@ export class PlayerSession {
       this.afterReward(result)
     },
 
-    /** Picks up Palm Beach's Secret Star: only standing at it, in Palm Beach, once. */
+    /** Redeems a code typed in Settings; the client hears back either way ('code'). */
+    redeemCode({ code }) {
+      const now = Date.now()
+      // A few tries a second at most: nobody guesses codes by brute force.
+      if (now - (this.codeAt || 0) < 1000) return
+      this.codeAt = now
+      const result = redeemCode(this.profile, code, { rand: this.rand })
+      this.emit('code', result.ok ? { ok: true, label: result.label } : { ok: false, error: result.error })
+      this.afterReward(result)
+    },
+
+    /** Picks up the Secret Star: only standing at it, in Shipwreck Cove, once. */
     findStar() {
       const p = this.getPosition()
       if (Math.hypot(p.x - STAR.x, p.z - STAR.z) > STAR.radius + 1) return
@@ -449,26 +456,10 @@ export class PlayerSession {
   }
 
   /**
-   * Metres walked on the ground since the last tick. A jump further than a few ticks of
-   * walking could cover (a teleport, a respawn, the hop back after a roll) earns nothing;
-   * the margin allows for position reports arriving in bursts.
+   * Advances training and flying. Call at a steady rate (the room's simulation interval).
+   * Walking round the lobby earns nothing: Strength comes from the benches and flights.
    */
-  stepWalked(dt) {
-    const p = this.getPosition()
-    if (this.lastX === null) {
-      this.lastX = p.x
-      this.lastZ = p.z
-      return 0
-    }
-    const d = Math.hypot(p.x - this.lastX, p.z - this.lastZ)
-    this.lastX = p.x
-    this.lastZ = p.z
-    return d > MAX_MOVE_SPEED * Math.max(dt, 0.1) * 3 ? 0 : d
-  }
-
-  /** Advances training, rolling and walking. Call at a steady rate (the room's simulation interval). */
   tick(dt, now) {
-    const walked = this.stepWalked(dt)
     if (now < this.rollingUntil) {
       // Health trickles in all the way along the track.
       this.rollTimer += dt
@@ -484,14 +475,6 @@ export class PlayerSession {
       }
     } else {
       this.trainTimer = Math.min(this.trainTimer, TRAIN_INTERVAL * 0.5)
-      // Walking round the lobby: a gain every WALK_STEP metres.
-      if (now >= this.busyUntil) {
-        this.walked += walked
-        while (this.walked >= WALK_STEP) {
-          this.walked -= WALK_STEP
-          this.gain('walk', -1, applyWalkStep(this.profile, now))
-        }
-      }
     }
     this.profile.stats.playtime += dt
     // A minute played towards today's quests; and past midnight, a new day: fresh
@@ -517,7 +500,7 @@ export class PlayerSession {
     if (this.dirty) this.sendProfile()
   }
 
-  /** Tells the client about a Health gain from `source` ('pad', 'roll' or 'walk'). */
+  /** Tells the client about a Health gain from `source` ('pad' or 'roll'). */
   gain(source, pad, result) {
     // At max level gains stop; there's nothing to show.
     if (result.gain > 0) {

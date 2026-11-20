@@ -2,9 +2,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import { Color, Matrix4, Quaternion, Vector3 } from 'three'
 
-import { ROLL_RECOVERY } from '@shared/balance'
+import { ROLL_RECOVERY, spinRate } from '@shared/balance'
 import { levelCap } from '@shared/balance'
-import { PAD_YAW } from '@shared/world'
+import { PAD_YAW, SPIN_BAR, TRACK_START_Z } from '@shared/world'
 
 import { armGrowth } from '../armStyles'
 
@@ -14,14 +14,19 @@ import { createBoxInstances, disposeBlocks } from '../blocks'
 import { RUN_CADENCE } from '../kick'
 import { sharedMaterials, STYLE } from '../materials'
 import { BODY } from '../playerPose'
-import { flierTurn, laneFor, rideState } from '../roll/path'
+import { barPoint, flierTurn, hangFor, laneFor, rideState } from '../roll/path'
 import { runtime } from '../runtime'
 import { hideNameplatesFrom, NAMEPLATE_POOL_SIZE, placeNameplate } from './nameplates'
 
 /** Remote players are drawn this far in the past, so 10 Hz updates interpolate. */
 const INTERP_DELAY_MS = 110
-const MAX_REMOTES = 8
+/** Others in a full room: 16 players, so 15 (one instanced draw call however many). */
+const MAX_REMOTES = 15
 const PARTS = 6
+/** How fast others are shown whirling round the spin bar (radians a second). */
+const REMOTE_SPIN = spinRate(0.75)
+const _barAt = { meter: 0, y: 0 }
+const _spinTurn = { pitch: 0, roll: 0 }
 const S = 0.36
 
 /** Classic blocky figure, in studs-scaled units: [x, y(pivot), size, hangs from pivot]. */
@@ -134,9 +139,9 @@ function writeNameplate(plate, name, at, distance, maxDistance, camera, size, ui
  * player), name tags and their pets (handed to the shared pet renderer). Also works out,
  * once a frame for everyone, what the real avatars (RemoteAvatars) need: each launch
  * replayed down the runway (`r.flying`, `r.flight`: the same path.rideState yours
- * follows). Stretching back on the launch posts they're where the network says they've
- * walked back to (anim 'pull'). On a pull-up bar they do pull-ups. Hidden past the
- * preset's draw distance.
+ * follows) and their whirl round the spin bar (anim 'pull': `r.spin`, `r.spinPos` -
+ * the network doesn't send it, so it's played here at a steady fast whirl). On a
+ * training bar they do pull-ups. Hidden past the preset's draw distance.
  */
 export function RemotePlayers() {
   const camera = useThree((s) => s.camera)
@@ -188,7 +193,17 @@ export function RemotePlayers() {
         }
       }
       r.pulling = r.anim === 'pull' && !r.flying
-      if (r.flying) r.shadow.position.set(r.flight.position.x, r.flight.position.y - 0.4, r.flight.position.z)
+      if (r.pulling) {
+        // On the spin bar: whirling up to speed round it.
+        r.spinRate += (REMOTE_SPIN - r.spinRate) * (1 - Math.exp(-3 * delta))
+        r.spin -= r.spinRate * delta
+        barPoint(r.spin, hangFor(r.spinRate), _barAt)
+        r.spinPos.set(r.position.x, _barAt.y, TRACK_START_Z - _barAt.meter)
+      } else {
+        r.spin = 0
+        r.spinRate = 0
+      }
+      if (r.flying) r.shadow.position.set(r.flight.position.x, 0, r.flight.position.z)
       else r.shadow.position.copy(r.position)
 
       // --- In the lobby -----------------------------------------------------------
@@ -212,21 +227,29 @@ export function RemotePlayers() {
         // Pull-ups on a bar: arms up, stretching long and snapping short each rep.
         if (running) r.walkPhase += delta * RUN_CADENCE
         const swing = walking ? Math.sin(r.walkPhase) * 0.9 : 0
-        const pulling = r.pulling
-        _q.setFromAxisAngle(_up, running ? PAD_YAW : pulling ? Math.PI : r.yaw)
-        _base.compose(r.position, _q, _s.set(1, 1, 1))
-        const rep = running ? 0.5 - 0.5 * Math.cos(r.walkPhase) : 0
-        // Otherwise their rubber arms reach the floor, dragging behind as they walk.
-        const drag = 0.15 + (walking ? 0.45 + Math.sin(r.walkPhase) * 0.25 : 0)
-        const arms = running ? Math.PI : pulling ? -1.45 : drag
-        const grow = armGrowth(r.tireId, r.level, levelCap(r.rebirths || 0))
-        const stretch = running ? 1.7 - rep * 0.7 : pulling ? 3 : 1.1 + (Math.min(3, 1.95 / Math.max(0.3, Math.cos(drag))) - 1.1) * grow
-        instance = writeFigure(body, instance, r, _base, swing, arms, stretch)
+        if (r.pulling) {
+          // Whirling round the bar, arms up on it.
+          _spinTurn.pitch = r.spin
+          flierTurn(_spinTurn, _flyQ)
+          _base.compose(r.spinPos, _flyQ, _s.set(1, 1, 1)).multiply(_hipDown)
+          instance = writeFigure(body, instance, r, _base, 0, Math.PI, 1.6)
+        } else {
+          _q.setFromAxisAngle(_up, running ? PAD_YAW : r.yaw)
+          _base.compose(r.position, _q, _s.set(1, 1, 1))
+          const rep = running ? 0.5 - 0.5 * Math.cos(r.walkPhase) : 0
+          // Arms swing against the stride.
+          const drag = walking ? Math.sin(r.walkPhase) * 0.5 : 0.05
+          const arms = running ? Math.PI : drag
+          const grow = armGrowth(r.tireId, r.level, levelCap(r.rebirths || 0))
+          const stretch = running ? 1.7 - rep * 0.7 : 1 + 0.1 * grow
+          instance = writeFigure(body, instance, r, _base, swing, arms, stretch)
+        }
       }
 
       // Name tag, just above the head (players are 1.8 tall).
       if (visible) {
         if (r.flying) _v.set(shownAt.x, shownAt.y + 1.4, shownAt.z)
+        else if (r.pulling) _v.set(r.position.x, SPIN_BAR.y + 1.1, r.position.z)
         else _v.set(r.position.x, r.position.y + 2.05, r.position.z)
         plate = writeNameplate(plate, r.name, _v, distance, settings.remoteNameDistance, camera, size, r.uid)
       }

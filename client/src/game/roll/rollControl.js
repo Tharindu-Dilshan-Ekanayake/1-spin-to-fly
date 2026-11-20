@@ -1,21 +1,21 @@
 import { Vector3 } from 'three'
 
-import { comboBonus, HIT_GRADES, STRETCH_REACH } from '@shared/balance'
+import { comboBonus, HIT_GRADES, rareThrowById } from '@shared/balance'
 import { formatNumber } from '@shared/format'
-import { LAUNCH_STAND, MAX_PULL, ROLL_RETURN } from '@shared/world'
+import { ROLL_RETURN } from '@shared/world'
 
 import { sfx } from '../../audio/sfx'
 import { getGame } from '../../store/game'
 import { fadeThrough } from '../../ui/fade'
 import { burst, fireBurst } from '../fx/fxQueue'
 import { spawnScattered } from '../fx/popups'
-import { consumePull, launch } from '../launch'
+import { consumePull } from '../launch'
 import { runtime } from '../runtime'
 import { zones } from '../worldLook'
 import { showHit } from './hudLink'
-import { createRideState, flightPeak, KICK_HIT, meterAtZ, PULL_DIST, PUSH_AHEAD, rideState, kickTimeAt } from './path'
+import { BAR_METER, createRideState, flightPeak, KICK_HIT, PUSH_AHEAD, rideState, kickTimeAt } from './path'
 
-/** How long the "+N Wins" result shows over you, landed, before you're back. */
+/** How long the "+$N" result shows over you, landed, before you're back. */
 const RESULT_HOLD_MS = 2600
 /** The skid sound starts this long before a normal stop. */
 const SKID_SOUND_LEAD = 0.9
@@ -23,7 +23,7 @@ const SKID_SOUND_LEAD = 0.9
 /**
  * The launch currently playing (the template's "roll"), read every frame by the camera,
  * the runway, your avatar and the effects. Everything about it is known when it starts
- * (the authority already resolved the distance and the Wins), so the client just plays it
+ * (the authority already resolved the distance and the Cash), so the client just plays it
  * back: no per-frame network traffic.
  *
  * It's a ride state (see path.rideState: phase, meter, air, pitch, roll, grip, the pose
@@ -50,15 +50,15 @@ export const roll = {
   tireId: 'bicycle',
   /** How well you let go (HIT_GRADES id), or null for Auto Launch. */
   hit: null,
-  /** Where you launched from: metre along the runway and how far to the side. */
-  fromMeter: 0,
+  /** How far to the side you launched from: where you hung on the bar. */
   startX: 0,
-  /** How far back the stretch had walked you (metres): the snap starts from there. */
-  pull: 0,
+  /** Your angle and speed round the bar when the launch started: the last whirl goes on from there. */
+  spin: 0,
+  spinRate: 0,
+  /** A rare throw ('lucky' | 'secret' | 'mythic') or null. */
+  rare: null,
   /** PERFECTs in a row with this launch (0: not a PERFECT), and its lucky gift or null. */
   combo: 0,
-  /** Metres of the stretch lane the server paid this launch for (STRETCH_REACH). */
-  stretch: 0,
   gift: null,
   /** performance.now() of the last landing, take-off and wall hit, for dust, shake and sound. */
   landedAt: 0,
@@ -75,6 +75,8 @@ export const roll = {
   freezeMs: 0,
   freezePower: 0,
   freezeLag: 0,
+  /** How fast the launch's clock runs during the freeze (a rare throw's cutscene: slow motion). */
+  freezeRate: 0.06,
   /**
    * You slamming down at the end of the arc: when (performance.now()), where, and how
    * high you fell from - what the turf splash and its spray of grass need.
@@ -126,7 +128,7 @@ export function advanceRoll(clockTime) {
   if (now - roll.freezeAt < roll.freezeMs) {
     // From the clock, not summed frame by frame: frame steps are capped, so on a slow
     // device a summed freeze would mostly slip away.
-    roll.lag = roll.freezeLag + (now - roll.freezeAt) * (1 - FREEZE_RATE)
+    roll.lag = roll.freezeLag + (now - roll.freezeAt) * (1 - roll.freezeRate)
   } else if (now - roll.hitAt < SLOW_MS && !roll.crashed) roll.lag += dt * (1 - SLOW_RATE)
   else roll.lag = Math.max(0, roll.lag - dt * CATCH_UP)
   // All caught up by half a second before the stop.
@@ -148,7 +150,7 @@ export function advanceRoll(clockTime) {
     roll.impactAt = now
     roll.impact.copy(roll.position)
     roll.impactMeter = roll.meter
-    roll.impactPeak = flightPeak(roll.distance - roll.fromMeter - PUSH_AHEAD, roll.hit)
+    roll.impactPeak = flightPeak(roll.distance - BAR_METER - PUSH_AHEAD, roll.hit)
     sfx.groundSmash(Math.min(1, roll.impactPeak / 32))
   }
   // Each belly bounce on the turf after it: a thud, softer every time.
@@ -174,37 +176,63 @@ const HIT_FX = {
 }
 
 /**
- * Shooting past the posts: the grade the stretch meter gave the launch, straight away, so
- * you see why you fly as far as you do. GOOD, GREAT and PERFECT each get their own moment,
- * bigger every step: time stands still for a beat while a burst flies off you - sparkles,
- * an electric-blue blast, a column of fire - and the grade's title slams onto the screen
- * (HitFlash.jsx); then you blast away with the lens punching wide and the camera shaking
- * (Roll.jsx). A WEAK one just flops off the rubber.
+ * A rare throw's cutscene: time slows right down as you leave the bar - a long beat of
+ * slow motion with the camera zooming in on you (Roll.jsx, from roll.freezePower) - while
+ * its title card slams onto the screen (HitFlash.jsx) and a burst in its colours flies
+ * off you; then you rocket away with the lens punching wide. SECRET and MYTHIC throws
+ * linger longer, burst bigger and ring louder.
+ */
+const RARE_FX = {
+  lucky: { ms: 900, rate: 0.25, palette: 'gold', count: 70, fire: 'perfect' },
+  secret: { ms: 1150, rate: 0.2, palette: 'power', count: 90, fire: 'great' },
+  mythic: { ms: 1400, rate: 0.15, palette: 'confetti', count: 120, fire: 'perfect' },
+}
+
+/**
+ * Flung off the bar: the grade the spin meter gave the launch, straight away, so you see
+ * why you fly as far as you do. GOOD, GREAT and PERFECT each get their own moment, bigger
+ * every step - a burst flies off you (sparkles, an electric-blue blast, a column of fire)
+ * and the grade's title slams onto the screen (HitFlash.jsx); then you blast away with
+ * the lens punching wide and the camera shaking (Roll.jsx). A WEAK one just flops off.
+ * A rare throw plays its cutscene instead (RARE_FX).
  */
 function blastOff(now) {
   const grade = HIT_GRADES.find((g) => g.id === roll.hit)
+  const rare = rareThrowById(roll.rare)
+  const p = roll.position
+  // The freeze starts the moment you left the bar on the launch's clock, not at whichever
+  // frame noticed: on a slow frame you'd be well away by then.
+  const leftAt = Math.min(now, roll.startedAt + roll.lag + KICK_HIT * 1000)
+  if (rare) {
+    const fx = RARE_FX[rare.id]
+    roll.freezeAt = leftAt
+    roll.freezeMs = fx.ms
+    roll.freezeRate = fx.rate
+    roll.freezePower = 1
+    roll.freezeLag = roll.lag
+    burst({ x: p.x, y: p.y, z: p.z, count: fx.count, palette: fx.palette, speed: 13 })
+    fireBurst(p.x, p.y, p.z, fx.fire)
+    showHit(rare.id)
+    sfx.gradeHit('perfect')
+    sfx.reveal()
+    timers.push(setTimeout(() => sfx.perfectRelease(1), fx.ms))
+    return
+  }
   if (!grade) return
   const fx = HIT_FX[grade.id]
-  const p = roll.position
   if (fx.count) burst({ x: p.x, y: p.y, z: p.z, count: fx.count, palette: fx.palette, speed: fx.speed })
-  // The stretch: metres walked back, and how much further that flings you.
-  if (roll.stretch >= 1) {
-    const extra = Math.round((STRETCH_REACH * roll.stretch * 100) / MAX_PULL)
-    spawnScattered(`${Math.round(roll.stretch)}m STRETCH! +${extra}% FLY`, { scale: 1.1 + Math.min(0.5, roll.stretch / 60) })
-  }
-  // PERFECTs in a row: the combo and the Wins it adds.
+  // PERFECTs in a row: the combo and the Cash it adds.
   if (grade.id === 'perfect' && roll.combo >= 2) {
-    timers.push(setTimeout(() => spawnScattered(`PERFECT COMBO x${roll.combo}! +${Math.round((comboBonus(roll.combo) - 1) * 100)}% WINS`, { scale: 1.25 }), 450))
+    timers.push(setTimeout(() => spawnScattered(`PERFECT COMBO x${roll.combo}! +${Math.round((comboBonus(roll.combo) - 1) * 100)}% CASH`, { scale: 1.25 }), 450))
   }
   if (grade.id === 'weak') {
     spawnScattered(grade.label, { scale: 1.3 })
     sfx.weakHit()
     return
   }
-  // The freeze starts the moment you passed the posts on the launch's clock, not at
-  // whichever frame noticed: on a slow frame you'd be well away by then.
-  roll.freezeAt = Math.min(now, roll.startedAt + roll.lag + KICK_HIT * 1000)
+  roll.freezeAt = leftAt
   roll.freezeMs = fx.freezeMs
+  roll.freezeRate = FREEZE_RATE
   roll.freezePower = fx.power
   roll.freezeLag = roll.lag
   fireBurst(p.x, p.y, p.z, fx.fire)
@@ -214,19 +242,14 @@ function blastOff(now) {
 }
 
 /**
- * Starts a launch the authority already resolved, from wherever your stretch had walked
- * you back to: the rubber snaps, you're slung past the posts, and off you fly. (Auto
- * Launch, and a launch the stretch had already let go of, start from full stretch.)
+ * Starts a launch the authority already resolved, from wherever you were round the bar:
+ * one last whirl, faster and faster, and you're flung off the front.
  */
 export function beginRoll(result) {
   clearTimers()
   const game = getGame()
-  const p = runtime.player.position
-  // How far back you'd walked from the posts' stand spot (your logical position: the
-  // server saw you there too). Auto Launch walks you all the way back as well.
-  const stretched = launch.gripping || launch.released
-  consumePull()
-  const back = Math.max(0, p.z - LAUNCH_STAND.z)
+  // Where you were round the bar, and how fast (a launch without a spin starts from hanging).
+  const spun = consumePull()
   Object.assign(roll, {
     active: true,
     stopped: false,
@@ -241,11 +264,11 @@ export function beginRoll(result) {
     best: result.best,
     tireId: result.tireId || game.profile.equippedTire,
     hit: result.hit ?? null,
-    fromMeter: meterAtZ(LAUNCH_STAND.z),
-    startX: LAUNCH_STAND.x,
-    pull: stretched || back > 0.2 ? back : PULL_DIST,
+    startX: runtime.player.position.x,
+    spin: spun.live ? spun.spin : 0,
+    spinRate: spun.live ? spun.rate : 0,
+    rare: result.rare || null,
     combo: result.combo || 0,
-    stretch: result.stretch || 0,
     gift: result.gift || null,
     landedAt: 0,
     tookOffAt: 0,
@@ -254,6 +277,7 @@ export function beginRoll(result) {
     freezeAt: 0,
     freezeMs: 0,
     freezePower: 0,
+    freezeRate: FREEZE_RATE,
     impactAt: 0,
     frameKey: -1,
     lag: 0,
@@ -275,11 +299,12 @@ export function beginRoll(result) {
     duration: result.duration,
     best: result.best,
     giftWins: result.gift?.wins || 0,
+    rare: result.rare || null,
   }
   timers.push(setTimeout(() => game.startRoll(started), 0))
 
-  // The rubber letting go with a twang, then the whoosh past the posts.
-  sfx.rubberSnap(Math.min(1, roll.pull / PULL_DIST))
+  // The last whirl's whoosh, then the swoosh of being flung off the bar.
+  sfx.rubberSnap(1)
   timers.push(setTimeout(() => sfx.rollStart(), KICK_HIT * 1000))
   // A cartoon whistle as you fall from the top of the arc, ending as you slam down.
   const apex = kickTimeAt(0.5, result.duration)
@@ -296,7 +321,7 @@ export function beginRoll(result) {
       // A stage reached for the first time ever: its name and the prize, once.
       const stages = zones()
       for (const zi of roll.discovered) {
-        game.showToast(`NEW STAGE: ${stages[zi].name}! +${formatNumber(stages[zi].discover)} Wins`)
+        game.showToast(`NEW STAGE: ${stages[zi].name}! +$${formatNumber(stages[zi].discover)}`)
       }
       // A lucky gift: a present bursting open over you, and what was in it.
       const gift = roll.gift
@@ -306,7 +331,7 @@ export function beginRoll(result) {
             () => {
               sfx.reveal()
               burst({ x: f.x, y: f.y + 2.4, z: f.z, count: 70, palette: 'confetti', speed: 11 })
-              const what = gift.wins ? `+${formatNumber(gift.wins)} Wins` : gift.label
+              const what = gift.wins ? `+$${formatNumber(gift.wins)}` : gift.label
               game.showToast(`LUCKY GIFT! ${gift.wins ? `${gift.label}: ${what}` : what}`)
             },
             roll.discovered.length ? 1600 : 500,

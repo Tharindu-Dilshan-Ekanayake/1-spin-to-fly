@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { isMuted, onMutedChange, setMuted } from '../../audio/sfx'
+import { actions } from '../../net/actions'
 import { useQuality } from '../../store/quality'
 import StrokeText from '../StrokeText'
 import { ChunkyButton } from '../hud/parts'
@@ -26,13 +27,19 @@ function SectionTitle({ children }) {
 
 /**
  * Settings: the graphics level (LOW by default; picking another rebuilds the 3D view
- * with it and remembers it on this device) and sound on or off.
+ * with it and remembers it on this device), redeeming codes, and sound on or off.
  */
 export function SettingsPanel() {
   const level = useQuality((s) => s.level)
   const setLevel = useQuality((s) => s.setLevel)
   const [muted, setMutedState] = useState(isMuted)
   useEffect(() => onMutedChange(setMutedState), [])
+  const [code, setCode] = useState('')
+  const submitCode = () => {
+    if (!code.trim()) return
+    actions.redeemCode(code)
+    setCode('')
+  }
 
   return (
     <Panel title="SETTINGS" icon="settings" width={860}>
@@ -60,6 +67,44 @@ export function SettingsPanel() {
             </ChunkyButton>
           )
         })}
+      </div>
+
+      <div style={{ marginTop: u(28) }}>
+        <SectionTitle>Codes</SectionTitle>
+        <form
+          className="flex items-center"
+          style={{ gap: u(14) }}
+          onSubmit={(e) => {
+            e.preventDefault()
+            submitCode()
+          }}
+        >
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.stopPropagation()}
+            maxLength={24}
+            placeholder="ENTER CODE"
+            aria-label="Code"
+            className="pointer-events-auto flex-1"
+            style={{
+              height: u(90),
+              fontSize: u(42),
+              padding: `0 ${u(22)}`,
+              borderRadius: u(16),
+              border: `${u(5)} solid #111`,
+              background: '#ffffff',
+              color: '#1b1b1f',
+              fontFamily: 'inherit',
+              letterSpacing: u(3),
+            }}
+          />
+          <ChunkyButton gradient={GRADIENTS.greenButton} onClick={submitCode} title="Redeem" radius={16} border={5} style={{ height: u(90), width: u(240) }}>
+            <span style={{ fontSize: u(42) }}>
+              <StrokeText stroke={u(9)}>REDEEM</StrokeText>
+            </span>
+          </ChunkyButton>
+        </form>
       </div>
 
       <div style={{ marginTop: u(28) }}>

@@ -6,7 +6,6 @@ import EggPanel from './EggPanel'
 import InteractPrompt from './InteractPrompt'
 import LeftMenu from './LeftMenu'
 import HealthBar from './HealthBar'
-import PassButtons from './PassButtons'
 import HitFlash from './HitFlash'
 import RollButton from './RollButton'
 import RollOverlay from './RollOverlay'
@@ -56,7 +55,6 @@ export function HUD() {
             frame of a flight don't re-lay them out each time. */}
         <div style={{ display: rolling ? 'none' : 'contents' }}>
           <LeftMenu />
-          <PassButtons />
           <TopCenter />
         </div>
         <HealthBar />

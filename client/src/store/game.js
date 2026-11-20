@@ -30,7 +30,7 @@ export const useGame = create((set, get) => ({
     code: null,
     isPrivate: false,
     players: 1,
-    maxPlayers: 8,
+    maxPlayers: 16,
     message: null,
   },
   sphinxStock: SPHINX_STOCK_DEFAULT,
@@ -83,7 +83,7 @@ export const useGame = create((set, get) => ({
       roll: null,
       pendingWins: 0,
       rollResult: roll
-        ? { wins: roll.wins, prize: roll.prize, distance: roll.distance, blocked: roll.blocked, best: roll.best, id: Date.now() }
+        ? { wins: roll.wins, prize: roll.prize, distance: roll.distance, blocked: roll.blocked, best: roll.best, rare: roll.rare || null, id: Date.now() }
         : null,
     })
   },

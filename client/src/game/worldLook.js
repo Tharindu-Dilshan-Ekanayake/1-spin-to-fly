@@ -36,7 +36,7 @@ export function skyLook({ top, horizon, sun = '#ffffff', glow = 0.5, clouds = 0.
  * violet sky going pink and orange down to the sea, the low sun big and gold over the
  * water, its haze (and the fog) the colour of the sea's horizon.
  */
-const LOBBY_SKIES = [skyLook(SKY), skyLook({ top: '#3d2f8f', horizon: '#ff9f86', sun: '#ffd27a', glow: 1.15, clouds: 0.6, stars: 0 })]
+const LOBBY_SKIES = [skyLook(SKY), skyLook({ top: '#2b1f73', horizon: '#ff8c5a', sun: '#ffcf73', glow: 1.9, clouds: 0.75, stars: 0 })]
 export const lobbySky = () => LOBBY_SKIES[activeWorld()] ?? LOBBY_SKIES[0]
 
 /**

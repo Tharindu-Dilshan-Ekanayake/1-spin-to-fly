@@ -78,9 +78,9 @@ function Bonuses() {
     if (!news || streakToastShown) return undefined
     streakToastShown = true
     const id = setTimeout(() => {
-      if (news.broke) showToast('Your streak ended... DAY 1 again - play tomorrow for x1.1 Wins!')
-      else if (news.days >= 2) showToast(`DAY ${news.days} STREAK! x${news.multiplier.toFixed(1)} Wins on every launch today!`)
-      else showToast('DAY 1 STREAK! Come back tomorrow for x1.1 Wins on every launch!')
+      if (news.broke) showToast('Your streak ended... DAY 1 again - play tomorrow for x1.1 Cash!')
+      else if (news.days >= 2) showToast(`DAY ${news.days} STREAK! x${news.multiplier.toFixed(1)} Cash on every launch today!`)
+      else showToast('DAY 1 STREAK! Come back tomorrow for x1.1 Cash on every launch!')
     }, 2500)
     return () => clearTimeout(id)
   }, [news, showToast])
@@ -95,13 +95,13 @@ function Bonuses() {
 
 /** Top-left, as in the reference: Rebirths, then Wins, with any running potions and bonuses under them. */
 export function StatsPanel() {
-  const wins = useGame((s) => s.profile.wins - s.pendingWins)
+  const wins = useGame((s) => Math.max(0, s.profile.wins - s.pendingWins))
   const rebirths = useGame((s) => s.profile.rebirths)
 
   return (
     <div className="hud-stats pointer-events-none absolute flex flex-col" style={{ contain: 'layout style' }}>
       <StatRow icon="rebirth" value={formatNumber(rebirths)} />
-      <StatRow icon="trophy" value={formatNumber(wins)} gradient={GRADIENTS.gold} />
+      <StatRow icon="trophy" value={`$${formatNumber(wins)}`} gradient={GRADIENTS.cash} />
       <Boosts />
       <Bonuses />
     </div>

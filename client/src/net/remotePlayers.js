@@ -49,6 +49,11 @@ export function upsertRemotePlayer(sessionId, state) {
       flight: createRideState(),
       flying: false,
       pulling: false,
+      /** Whirling round the spin bar (RemotePlayers advances it): angle and speed. */
+      spin: 0,
+      spinRate: 0,
+      /** Their middle while whirling round the bar (RemotePlayers writes it). */
+      spinPos: new Vector3(),
     }
     // Its own point: while they fly it follows them down the runway (RemotePlayers).
     r.shadow = { position: r.position.clone(), size: 1.1, visible: true }

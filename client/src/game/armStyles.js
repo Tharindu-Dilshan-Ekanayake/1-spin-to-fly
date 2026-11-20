@@ -1,95 +1,109 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
-  Color,
+  BufferGeometry,
   CylinderGeometry,
+  Color,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   MeshLambertMaterial,
-  SphereGeometry,
+  ShaderMaterial,
+  Vector3,
 } from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { armGrowth } from '@shared/balance'
 
+import { useQuality } from '../store/quality'
 import { glowTime } from './glow'
 
 /**
  * How every pair of arms in the shop looks (shared/balance.js TIRES - the ids are the
- * template's, the names are arms): a procedural pattern and three colours, drawn by one
- * GLSL function (ARM_GLSL). The same function paints the arms of your Bloxity avatar
- * (patchArmMaterial, on its merged body: one draw call, one program) and the floating
- * arms on the shop's stands (createArmDisplayMesh: every stand in one draw call). No
- * textures: everything is maths on the arm's rest-pose position, so stripes and spots
- * stretch with the arm when it stretches like rubber.
+ * template's, the names are arms). They climb from plain colours, through polished
+ * metals, to cut gems, and every pair but the starter shines twice over: from inside (the
+ * arm's own paint glows - `glow`) and outside (its aura - `aura`). Drawn by one GLSL
+ * function (ARM_GLSL), the same on your Bloxity avatar's rubber arms and the shop's
+ * standing pairs. No textures: everything is maths on the arm's rest-pose position, so
+ * facets and bands stretch with the arm when it stretches like rubber.
  *
  *   pattern  what ARM_GLSL draws (ARM_PATTERN)
- *   a, b, c  base, design and accent colours (what each is depends on the pattern)
- *   glow     how much it shines on its own (0-1)
- *   skin     the avatar keeps its own skin on these arms (the starter Noodle Arms)
+ *   a, b, c  main, shadow and highlight colours
+ *   glow     how much it shines from within (0-1); kept up on LOW too, it costs nothing
+ *   skin     the starter arms: no glow, no aura
  *   trail    the colour of your flight's trail, speed lines and stand trim
+ *   aura     [kind (AURA), strength, size] of the glow round them; auraA / auraB its
+ *            two colours (default: trail and c)
  */
 
 export const ARM_PATTERN = {
-  SOLID: 0,
-  RINGS: 1,
-  SPOTS: 2,
-  CANDY: 3,
-  JELLY: 4,
-  STONE: 5,
-  BAMBOO: 6,
-  SUCKERS: 7,
-  ROBOT: 8,
-  ZEBRA: 9,
-  CHROME: 10,
-  FROST: 11,
-  GILDED: 12,
-  MAGMA: 13,
-  THUNDER: 14,
-  GEM: 15,
-  SPECTRUM: 16,
-  COTTON: 17,
-  NEBULA: 18,
-  SCALES: 19,
-  COSMIC: 20,
-  PRISM: 21,
+  /** One colour, lighter at the shoulder, glowing softly from within. */
+  PLAIN: 0,
+  /** Polished metal: bands, fine brushed lines, a shine sweeping down the arm. */
+  METAL: 1,
+  /** A cut gem: facets each their own shade, bright edges, twinkling sparkles. */
+  GEM: 2,
+  /** A rainbow gem: the facets cycle through every colour. */
+  PRISM: 3,
 }
 
 const P = ARM_PATTERN
 
+/**
+ * One piece of an arm: a box with rounded edges (radius `r`) - or, on LOW, a plain box:
+ * seen small on a phone they look the same, at a tenth of the triangles (24 shop pairs and
+ * every avatar's arms add up).
+ */
+const armBox = (w, h, d, r) => (useQuality.getState().level === 'LOW' ? new BoxGeometry(w, h, d) : new RoundedBoxGeometry(w, h, d, 1, r))
+
 export const ARM_STYLES = {
-  bicycle: { pattern: P.SOLID, a: '#ffd86b', b: '#f2b33d', c: '#fff2b0', skin: true, trail: '#ffd86b' },
-  mountain: { pattern: P.RINGS, a: '#ff5050', b: '#ffd21f', c: '#ffffff', trail: '#ff7a5a' },
-  wood: { pattern: P.SPOTS, a: '#7ee35a', b: '#ff6ad5', c: '#ffffff', trail: '#9dff6a' },
-  stone: { pattern: P.CANDY, a: '#ff8fd0', b: '#ffffff', c: '#ff4fa8', trail: '#ff9cd6' },
-  cookie: { pattern: P.JELLY, a: '#3fb8ff', b: '#9fe8ff', c: '#ffffff', glow: 0.12, trail: '#7fd8ff' },
-  pizza: { pattern: P.STONE, a: '#8d939c', b: '#c3c8cf', c: '#34373e', trail: '#d6dce6' },
-  donut: { pattern: P.BAMBOO, a: '#a6d65a', b: '#6fae3a', c: '#4a7a22', trail: '#b6ff6a' },
-  watermelon: { pattern: P.SUCKERS, a: '#a64cff', b: '#ffb3e6', c: '#6a24c8', trail: '#c58cff' },
-  monster: { pattern: P.ROBOT, a: '#c4ccd8', b: '#8a96a8', c: '#3fe0ff', glow: 0.05, trail: '#5fe8ff' },
-  mint: { pattern: P.ZEBRA, a: '#151519', b: '#f4f4f4', c: '#ffffff', trail: '#ffffff' },
-  silver: { pattern: P.CHROME, a: '#eef2f8', b: '#7d8aa0', c: '#ffffff', glow: 0.05, trail: '#e8f0ff' },
-  ice: { pattern: P.FROST, a: '#c9f1ff', b: '#5fb6ee', c: '#ffffff', glow: 0.1, trail: '#bff4ff' },
-  gold: { pattern: P.GILDED, a: '#ffc81a', b: '#fff1a8', c: '#c27a00', glow: 0.16, trail: '#ffd21f' },
-  lava: { pattern: P.MAGMA, a: '#2a0f0b', b: '#ff5a14', c: '#ffd21f', trail: '#ff5a1c' },
-  platinum: { pattern: P.THUNDER, a: '#1c2a5c', b: '#2f4fa8', c: '#9ff4ff', trail: '#7fe6ff' },
-  emerald: { pattern: P.GEM, a: '#2bd17a', b: '#0a6b34', c: '#d6ffe6', glow: 0.12, trail: '#7dffb0' },
-  ruby: { pattern: P.GEM, a: '#ff3b5c', b: '#7a0a22', c: '#ffd6de', glow: 0.12, trail: '#ff7a90' },
-  diamond: { pattern: P.GEM, a: '#bff0ff', b: '#4fc0ff', c: '#ffffff', glow: 0.12, trail: '#bff4ff' },
-  rainbow: { pattern: P.SPECTRUM, a: '#ffffff', b: '#ffffff', c: '#ffffff', glow: 0.22, trail: '#ff7ad9' },
-  unicorn: { pattern: P.COTTON, a: '#ffb6e6', b: '#a8d8ff', c: '#ffffff', glow: 0.06, trail: '#ffb0f0' },
-  galaxy: { pattern: P.NEBULA, a: '#120a2a', b: '#7a3cff', c: '#5fd6ff', trail: '#a46bff' },
-  dragon: { pattern: P.SCALES, a: '#22a552', b: '#0d4f26', c: '#ffd21f', trail: '#4cff7a' },
-  cosmic: { pattern: P.COSMIC, a: '#0b1738', b: '#ff3d8a', c: '#ffd24a', trail: '#ff9ed8' },
-  infinity: { pattern: P.PRISM, a: '#ffffff', b: '#ffffff', c: '#ffffff', glow: 0.3, trail: '#ffffff' },
+  // Plain colours.
+  bicycle: { pattern: P.PLAIN, a: '#ffd86b', b: '#e3ad42', c: '#fff2b0', skin: true, trail: '#ffd86b', aura: [0, 0] },
+  mountain: { pattern: P.PLAIN, a: '#ffffff', b: '#c3cedd', c: '#ffffff', glow: 0.3, trail: '#ffffff', aura: [6, 0.9], auraA: '#ffffff', auraB: '#cfe6ff' },
+  wood: { pattern: P.PLAIN, a: '#ff3b3b', b: '#b3121e', c: '#ffb0a0', glow: 0.35, trail: '#ff6a5a', aura: [2, 0.9], auraA: '#ff2a14', auraB: '#ffb21f' },
+  stone: { pattern: P.PLAIN, a: '#ff8a1f', b: '#bf4f00', c: '#ffd27a', glow: 0.35, trail: '#ffa64f', aura: [9, 0.9], auraA: '#ff3b00', auraB: '#ffd21f' },
+  cookie: { pattern: P.PLAIN, a: '#ffe23a', b: '#c99f00', c: '#fff6b0', glow: 0.35, trail: '#fff06a', aura: [3, 0.9], auraA: '#ffe23a', auraB: '#ffffff' },
+  pizza: { pattern: P.PLAIN, a: '#3fe05a', b: '#11922a', c: '#b6ff9a', glow: 0.35, trail: '#7dff8a', aura: [5, 0.9], auraA: '#1fd14a', auraB: '#d9ff7a' },
+  donut: { pattern: P.PLAIN, a: '#2f8bff', b: '#1239a8', c: '#a8dcff', glow: 0.35, trail: '#6fb4ff', aura: [3, 0.95], auraA: '#2f8bff', auraB: '#ffffff' },
+  watermelon: { pattern: P.PLAIN, a: '#a64cff', b: '#561ba8', c: '#f0c8ff', glow: 0.35, trail: '#c58cff', aura: [4, 0.95], auraA: '#8a3cff', auraB: '#ff8ff0' },
+  monster: { pattern: P.PLAIN, a: '#34343f', b: '#0d0d12', c: '#9a9ab8', glow: 0.18, trail: '#b0b0ff', aura: [4, 1], auraA: '#5a3cff', auraB: '#c8b8ff' },
+  // Metals.
+  mint: { pattern: P.METAL, a: '#d89050', b: '#74400f', c: '#ffe0b8', glow: 0.15, trail: '#e8a060', aura: [2, 0.95], auraA: '#ff6a1f', auraB: '#ffd8a0' },
+  silver: { pattern: P.METAL, a: '#e8eef6', b: '#7f8b9b', c: '#ffffff', glow: 0.15, trail: '#e8f0ff', aura: [3, 1], auraA: '#bfe0ff', auraB: '#ffffff' },
+  ice: { pattern: P.METAL, a: '#ffc81a', b: '#a06400', c: '#fff6c0', glow: 0.25, trail: '#ffd21f', aura: [2, 1], auraA: '#ffb21f', auraB: '#fff6c0' },
+  gold: { pattern: P.METAL, a: '#f0f5f9', b: '#93a7b6', c: '#ffffff', glow: 0.25, trail: '#dff4ff', aura: [6, 1.05], auraA: '#bfe8ff', auraB: '#ffffff' },
+  lava: { pattern: P.METAL, a: '#a3afc2', b: '#373f4f', c: '#d6f0ff', glow: 0.2, trail: '#8fc0ff', aura: [3, 1.05], auraA: '#4f8fff', auraB: '#e0f0ff' },
+  platinum: { pattern: P.METAL, a: '#ffb4a4', b: '#a8604f', c: '#fff0ea', glow: 0.25, trail: '#ffb0a0', aura: [2, 1.05], auraA: '#ff5a8a', auraB: '#ffd0e0' },
+  // Gems.
+  emerald: { pattern: P.GEM, a: '#2bd17a', b: '#08602e', c: '#d6ffe6', glow: 0.35, trail: '#7dffb0', aura: [5, 1.05], auraA: '#14c85a', auraB: '#c8ffd8' },
+  ruby: { pattern: P.GEM, a: '#ff3b5c', b: '#700820', c: '#ffd6de', glow: 0.35, trail: '#ff7a90', aura: [2, 1.1], auraA: '#ff1f3a', auraB: '#ffb0a0' },
+  diamond: { pattern: P.GEM, a: '#3f7bff', b: '#0a2680', c: '#d6e6ff', glow: 0.35, trail: '#7fa8ff', aura: [3, 1.1], auraA: '#2f6bff', auraB: '#d6e6ff' },
+  rainbow: { pattern: P.GEM, a: '#b06bff', b: '#44167f', c: '#f0dcff', glow: 0.35, trail: '#c99cff', aura: [4, 1.1], auraA: '#a64cff', auraB: '#ffd0ff' },
+  unicorn: { pattern: P.GEM, a: '#ffb83a', b: '#9e5400', c: '#fff0c8', glow: 0.35, trail: '#ffc86a', aura: [9, 1.15], auraA: '#ff7a00', auraB: '#fff0a0' },
+  galaxy: { pattern: P.GEM, a: '#e8faff', b: '#86d0ff', c: '#ffffff', glow: 0.45, trail: '#bff4ff', aura: [6, 1.25, 1.2], auraA: '#bff4ff', auraB: '#ffffff' },
+  dragon: { pattern: P.GEM, a: '#2e2848', b: '#090712', c: '#d6c8ff', glow: 0.3, trail: '#a48cff', aura: [4, 1.25, 1.2], auraA: '#7a4cff', auraB: '#ffffff' },
+  // Rainbow gems.
+  cosmic: { pattern: P.PRISM, a: '#ffffff', b: '#ffffff', c: '#ffffff', glow: 0.4, trail: '#ff9ed8', aura: [8, 1.3, 1.25] },
+  infinity: { pattern: P.PRISM, a: '#ffffff', b: '#ffffff', c: '#ffffff', glow: 0.55, trail: '#ffffff', aura: [8, 1.45, 1.4] },
 }
 
 // Parsed once: frame code looks colours up without allocating.
 const PARSED = Object.fromEntries(
   Object.entries(ARM_STYLES).map(([id, s]) => [
     id,
-    { ...s, a: new Color(s.a), b: new Color(s.b), c: new Color(s.c), trail: new Color(s.trail), glow: s.glow ?? 0 },
+    {
+      ...s,
+      a: new Color(s.a),
+      b: new Color(s.b),
+      c: new Color(s.c),
+      trail: new Color(s.trail),
+      glow: s.glow ?? 0,
+      aura: s.aura ?? [0, 0],
+      auraA: new Color(s.auraA ?? s.trail),
+      auraB: new Color(s.auraB ?? s.c),
+    },
   ]),
 )
 const styleOf = (id) => PARSED[id] || PARSED.bicycle
@@ -104,16 +118,11 @@ export const armBase = (id) => styleOf(id).a
 
 /**
  * The arm painter, in GLSL. `p` is the arm's rest-pose position in the Bloxity rig's
- * units (the avatar is ~6.4 tall, an arm ~2 long, hanging down along y); `t` is a clock
- * for the animated ones. Returns the colour and how much it glows (0-1).
- *
- * Kept cheap to compile as well as to run: the cell pattern (a 3x3 loop) and the two
- * noises are each evaluated once, at a scale picked by the pattern, and every pattern
- * shades from those. (Called from every branch instead, Windows' shader compiler unrolled
- * the loop eight times over and the avatar's program took ~1 s to build on a phone-speed
- * CPU, stalling the first frame it appeared in.)
+ * units (the avatar is ~6.4 tall, an arm ~2 long, hanging down along y: the shoulder at
+ * about 4); `t` is a clock for the shine and sparkles. Returns the colour and how much it
+ * glows from within (0-1). Cheap to compile: one cell evaluation, in the gem branch only.
  */
-export const ARM_GLSL = /* glsl */ `
+const ARM_NOISE_GLSL = /* glsl */ `
   float aHash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
     p += dot(p, p + 45.32);
@@ -125,6 +134,13 @@ export const ARM_GLSL = /* glsl */ `
     f = f * f * (3.0 - 2.0 * f);
     return mix(mix(aHash(i), aHash(i + vec2(1.0, 0.0)), f.x), mix(aHash(i + vec2(0.0, 1.0)), aHash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
+  vec3 aHue(float h) {
+    return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  }
+`
+
+export const ARM_GLSL = /* glsl */ `
+  ${ARM_NOISE_GLSL}
   // Nearest and second-nearest cell distances, and the nearest cell's id (0-1).
   vec3 aCells(vec2 p) {
     vec2 i = floor(p);
@@ -144,106 +160,35 @@ export const ARM_GLSL = /* glsl */ `
     }
     return vec3(sqrt(d1), sqrt(d2), id);
   }
-  vec3 aHue(float h) {
-    return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-  }
   vec4 armLook(vec3 p, float pattern, vec3 a, vec3 b, vec3 c, float glow, float t) {
     float y = p.y;
     vec2 q = vec2(p.x + p.z, p.y);
     int k = int(pattern + 0.5);
-    // Each pattern's cell and noise scales (and drift), then one evaluation of each.
-    float cs = k == 2 ? 2.6 : k == 5 ? 2.0 : k == 7 ? 3.2 : k == 13 ? 2.2 : k == 15 ? 2.8 : 2.4;
-    vec2 drift = k == 13 ? vec2(0.0, t * 0.15) : vec2(0.0);
-    bool cellular = k == 2 || k == 5 || k == 7 || k == 11 || k == 13 || k == 15 || k == 21;
-    vec3 cl = cellular ? aCells(q * cs + drift) : vec3(1.0, 1.0, 0.0);
-    float edge = cl.y - cl.x;
-    float ns = k == 4 ? 3.0 : k == 9 ? 2.0 : k == 14 ? 3.0 : k == 17 ? 1.6 : k == 13 ? 4.0 : 2.0;
-    vec2 nd = k == 4 ? vec2(0.0, t * 0.6) : k == 17 ? vec2(t * 0.1, 0.0) : k == 13 ? vec2(t) : vec2(0.0, t * 0.08);
-    float n1 = aNoise(q * ns + nd);
-    float n2 = aNoise(q * 5.5);
     vec3 col = a;
     float emit = glow;
     if (k == 1) {
-      col = mix(a, b, step(0.5, fract(y * 2.2)));
-    } else if (k == 2) {
-      col = mix(a, b, 1.0 - smoothstep(0.22, 0.32, cl.x));
-    } else if (k == 3) {
-      col = mix(a, b, step(0.5, fract((y + (p.x + p.z) * 0.8) * 1.6)));
-    } else if (k == 4) {
-      col = mix(a, b, smoothstep(0.55, 0.8, n1)) + c * smoothstep(0.8, 0.92, n1) * 0.6;
-    } else if (k == 5) {
-      col = mix(c, mix(a, b, n2 * 0.6), smoothstep(0.02, 0.07, edge));
-    } else if (k == 6) {
-      float f = fract(y * 1.3);
-      float node = 1.0 - smoothstep(0.0, 0.08, min(f, 1.0 - f));
-      col = mix(mix(a, b, n2 * 0.4), c, node);
-    } else if (k == 7) {
-      float cup = 1.0 - smoothstep(0.17, 0.21, cl.x);
-      float rim = smoothstep(0.17, 0.21, cl.x) * (1.0 - smoothstep(0.27, 0.31, cl.x));
-      col = mix(mix(a, b, cup), c, rim);
-    } else if (k == 8) {
-      vec2 cell = q * vec2(1.6, 1.4);
-      vec2 g = fract(cell);
-      float seam = 1.0 - smoothstep(0.0, 0.05, min(min(g.x, 1.0 - g.x), min(g.y, 1.0 - g.y)));
-      col = mix(mix(a, b, step(0.5, aHash(floor(cell))) * 0.3), vec3(0.1, 0.12, 0.16), seam);
-      float light = step(0.92, fract(y * 1.4)) * (0.6 + 0.4 * sin(t * 4.0 + y * 3.0));
-      col = mix(col, c, light);
-      emit = max(emit, light);
-    } else if (k == 9) {
-      float w = sin(y * 9.0 + sin((p.x + p.z) * 6.0) * 1.4 + n1 * 2.0);
-      col = mix(a, b, smoothstep(-0.15, 0.15, w));
-    } else if (k == 10) {
-      float r = 0.5 + 0.5 * sin(y * 3.0 + (p.x - p.z) * 4.0);
-      col = mix(mix(b, a, r), c, smoothstep(0.92, 1.0, r) * 0.7);
-    } else if (k == 11) {
-      col = mix(a, b, 1.0 - smoothstep(0.02, 0.06, edge));
-      float sp = step(0.985, aHash(floor(q * 18.0) + floor(t * 3.0)));
-      col = mix(col, c, sp);
-      emit = max(emit, sp);
-    } else if (k == 12) {
-      float r = 0.5 + 0.5 * sin(y * 3.5 + (p.x + p.z) * 2.0);
-      float band = 1.0 - smoothstep(0.0, 0.05, abs(abs(fract(y * 1.2) - 0.5) - 0.4));
-      col = mix(mix(a, b, r * 0.6), c, band * 0.8);
-    } else if (k == 13) {
-      float crack = 1.0 - smoothstep(0.02, 0.09, edge);
-      col = mix(a, mix(b, c, n1), crack);
-      emit = max(emit, crack * (0.75 + 0.25 * sin(t * 3.0 + y * 2.0)));
-    } else if (k == 14) {
-      float z = abs(fract((p.x + p.z) * 1.2 + abs(fract(y * 2.0) - 0.5) * 0.9 + t * 0.4) - 0.5);
-      float bolt = 1.0 - smoothstep(0.03, 0.07, z);
-      float flick = step(0.35, fract(sin(floor(t * 8.0)) * 43758.5));
-      col = mix(mix(a, b, n1 * 0.5), c, bolt);
-      emit = max(emit, bolt * (0.5 + 0.5 * flick));
-    } else if (k == 15) {
-      col = mix(a, b, cl.z * 0.8);
-      col = mix(col, c, smoothstep(0.85, 1.0, cl.z) * 0.8);
-      col = mix(col, c, 1.0 - smoothstep(0.0, 0.04, edge));
-      emit = max(emit, pow(max(0.0, sin(t * 2.0 + cl.z * 30.0)), 24.0) * 0.8);
-    } else if (k == 16) {
-      col = mix(aHue(fract(y * 0.5 - t * 0.25)), vec3(1.0), 0.18);
-    } else if (k == 17) {
-      float s = sin((y + n1 * 2.2) * 4.0);
-      col = mix(mix(a, b, smoothstep(-0.6, 0.6, s)), c, smoothstep(0.6, 0.95, n1));
-    } else if (k == 18 || k == 20) {
-      float n = n1 * 0.65 + n2 * 0.35;
-      col = mix(a, b, smoothstep(0.35, 0.75, n));
-      col = mix(col, c, smoothstep(0.7, 0.95, n) * 0.8);
-      vec2 cellS = floor(q * 22.0);
-      float star = step(0.975, aHash(cellS)) * (0.5 + 0.5 * sin(t * 4.0 + aHash(cellS + 5.0) * 30.0));
-      col = mix(col, vec3(1.0), star);
-      emit = max(emit, star + smoothstep(0.7, 0.95, n) * 0.3);
-    } else if (k == 19) {
-      float row = floor(q.y * 3.2);
-      vec2 sq = vec2(q.x * 3.2 + mod(row, 2.0) * 0.5, q.y * 3.2);
-      float d = length((fract(sq) - vec2(0.5, 0.25)) * vec2(1.0, 1.3));
-      col = mix(a, b, smoothstep(0.2, 0.48, d));
-      col = mix(col, c, smoothstep(0.38, 0.44, d) * (1.0 - smoothstep(0.46, 0.5, d)));
-    } else if (k == 21) {
-      col = aHue(fract(cl.z + t * 0.2 + y * 0.15));
-      col = mix(col, vec3(1.0), 0.25 + 0.3 * (1.0 - smoothstep(0.0, 0.05, edge)));
-      emit = max(emit, 0.35);
+      // Metal: polished bands, fine brushed lines, a bright shine sweeping down the arm.
+      float r = 0.5 + 0.5 * sin(y * 2.6 + (p.x - p.z) * 3.0);
+      float brush = aNoise(vec2(q.x * 1.5, q.y * 18.0));
+      col = mix(b, a, r) * (0.9 + 0.2 * brush);
+      float sweep = smoothstep(0.9, 1.0, sin(y * 1.1 - t * 2.4 + (p.x + p.z) * 0.6));
+      col = mix(col, c, sweep * 0.85 + smoothstep(0.85, 1.0, r) * 0.4);
+      emit = glow + sweep * 0.7;
+    } else if (k >= 2) {
+      // A gem: cut facets, each its own shade (or colour, for a rainbow gem), bright edges
+      // and sparkles twinkling on and off.
+      vec3 cl = aCells(q * 2.6);
+      float edge = cl.y - cl.x;
+      col = k == 2 ? mix(b, a, 0.35 + cl.z * 0.65) : mix(aHue(fract(cl.z + t * 0.15 + y * 0.12)), vec3(1.0), 0.2);
+      float rim = 1.0 - smoothstep(0.0, 0.05, edge);
+      col = mix(col, c, rim * 0.8);
+      float twinkle = pow(max(0.0, sin(t * 2.5 + cl.z * 40.0)), 20.0);
+      col = mix(col, vec3(1.0), twinkle);
+      emit = glow + rim * 0.5 + twinkle;
     } else {
-      col = mix(a, b, smoothstep(1.5, -1.5, y) * 0.35);
+      // Plain: one colour, lighter at the shoulder, glowing softly from within.
+      col = mix(b, a, 0.55 + 0.45 * smoothstep(-2.0, 4.0, y));
+      emit = glow * (0.8 + 0.4 * (0.5 + 0.5 * sin(t * 2.0 + y * 1.5)));
     }
     return vec4(col, emit);
   }
@@ -320,22 +265,412 @@ export function setArmLook(material, id, hide = false) {
   u.uArmStyle.value = [s.pattern, s.glow, s.skin ? 0 : 1, hide ? 1 : 0]
 }
 
-// --- The shop's floating arms -----------------------------------------------------------
+// --- Glow auras -----------------------------------------------------------------------
 
 /**
- * A flexing arm, built straight out of a few rounded pieces: a cuff at the shoulder, the
- * upper arm lying sideways, the forearm standing up from the elbow, a bulging bicep and
- * a blocky fist with knuckles and a thumb on top. Low-poly (~450 triangles): they're seen
- * from across the plaza. Each piece carries `aArmP`, its position as if the arm were
- * hanging straight in the avatar rig's units, so the patterns run along it just as they
- * do on an avatar. About 2.6 units across; centred.
+ * The glowing aura round a pair of arms: a shell a little bigger than the arm, drawn
+ * additively (no depth writes), its brightness swelling at the silhouette and painted by
+ * the arms' element (`aura[0]`, AURA): flames licking up the arm, lightning crackling down
+ * it, void smoke, toxic fire, frost or gold sparkles, a rainbow. Its edge flickers in and
+ * out (the shell's size breathes with a noise), so it reads as alive from across the
+ * plaza. One program for every avatar's arms, one more for the shop's.
+ *
+ * Per instance: `aAura` (kind, strength, size, -), `aAuraA` / `aAuraB` (its two colours).
  */
-function createFlexGeometry() {
+const AURA_VERTEX_HEAD = /* glsl */ `
+  attribute vec4 aAura;
+  attribute vec3 aAuraA;
+  attribute vec3 aAuraB;
+  uniform float uArmTime;
+  varying vec3 vArmP;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec4 vAura;
+  varying vec3 vAuraA;
+  varying vec3 vAuraB;
+`
+
+const AURA_FRAGMENT = /* glsl */ `
+  uniform float uArmTime;
+  varying vec3 vArmP;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec4 vAura;
+  varying vec3 vAuraA;
+  varying vec3 vAuraB;
+  ${ARM_NOISE_GLSL}
+  void main() {
+    int k = int(vAura.x + 0.5);
+    float t = uArmTime;
+    float rim = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+    rim *= rim;
+    vec2 q = vec2((vArmP.x + vArmP.z) * 1.6, vArmP.y * 1.2);
+    // Fire and toxic flames race up the arm; smoke drifts; the rest shimmer slowly.
+    float speed = (k == 2 || k == 5) ? 2.6 : k == 9 ? 0.9 : k == 4 ? 0.5 : 0.8;
+    float n = aNoise(q + vec2(0.0, -t * speed));
+    #ifdef AURA_LITE
+      float n2 = n;
+    #else
+      float n2 = aNoise(q * 2.7 + vec2(t * 0.3, -t * speed * 1.4));
+    #endif
+    float flame = smoothstep(0.5, 0.9, n * 0.6 + n2 * 0.5);
+    // A soft halo: brightest at the silhouette, fading to almost nothing across the face
+    // of the arm so the arm itself shows through clearly. No hard lines or patterns - the
+    // flames, sparks and glitter are the particles' (PARTICLE_FRAGMENT).
+    float halo = smoothstep(0.0, 1.0, rim);
+    vec3 col = mix(vAuraA, vAuraB, halo * 0.6 + n2 * 0.25);
+    float a = 0.03 + halo * 0.42;
+    if (k == 2 || k == 5 || k == 9) {
+      // Fire, toxic, lava: the halo licks upward a little.
+      a += flame * 0.22 * halo;
+      col = mix(col, vAuraB, flame * 0.5);
+    } else if (k == 3) {
+      // Electric: the halo flickers like a live wire.
+      a *= 0.75 + 0.35 * step(0.3, fract(sin(floor(t * 12.0)) * 43758.5));
+    } else if (k == 8) {
+      col = aHue(fract(vArmP.y * 0.25 - t * 0.4));
+    }
+    a = clamp(a * vAura.y, 0.0, 1.0);
+    gl_FragColor = vec4(col * a, a);
+  }
+`
+
+/** Aura kinds (`aura[0]` in ARM_STYLES). */
+export const AURA = { NONE: 0, GLOW: 1, FIRE: 2, THUNDER: 3, VOID: 4, TOXIC: 5, FROST: 6, GOLD: 7, RAINBOW: 8, LAVA: 9 }
+
+const auraMaterials = {}
+
+/**
+ * The aura's material: for the avatars' rubber arms (`display` false: shaped and
+ * stretched exactly as the arm is, by armShape) or the shop's standing arms (grown about
+ * each piece's own middle, `aCenter`).
+ */
+function getAuraMaterial(display) {
+  // LOW: the same aura, cheaper - one noise and no flicker of its edge (the first flight
+  // on a phone dipped under 45 FPS with the full one).
+  const lite = useQuality.getState().level === 'LOW'
+  const key = `${display ? 'display' : 'rubber'}${lite ? '-lite' : ''}`
+  if (auraMaterials[key]) return auraMaterials[key]
+  const shape = display
+    ? /* glsl */ `
+      attribute vec3 aArmP;
+      attribute vec3 aCenter;
+      void main() {
+        #ifdef AURA_LITE
+          float wob = 0.5;
+        #else
+          float wob = aNoise(vec2(aArmP.y * 1.5 - uArmTime * 3.0, aArmP.x + aArmP.z));
+        #endif
+        float inflate = aAura.z * (0.75 + 0.5 * wob);
+        vec3 armPos = aCenter + (position - aCenter) * (1.0 + inflate);
+        vArmP = aArmP;
+        vec4 mv = modelViewMatrix * instanceMatrix * vec4(armPos, 1.0);
+        vN = normalize(mat3(modelViewMatrix * instanceMatrix) * normal);
+        vV = -mv.xyz;
+        vAura = aAura; vAuraA = aAuraA; vAuraB = aAuraB;
+        gl_Position = projectionMatrix * mv;
+      }`
+    : /* glsl */ `
+      ${ARM_SHAPE_GLSL}
+      void main() {
+        #ifdef AURA_LITE
+          float wob = 0.5;
+        #else
+          float wob = aNoise(vec2(aArmP.y * 1.5 - uArmTime * 3.0, aArmP.x + aArmP.z));
+        #endif
+        vec3 armPos;
+        vec3 armN;
+        armShape(position, normal, aAura.z * (0.75 + 0.5 * wob), armPos, armN, vArmP);
+        vec4 mv = modelViewMatrix * instanceMatrix * vec4(armPos, 1.0);
+        vN = normalize(mat3(modelViewMatrix * instanceMatrix) * armN);
+        vV = -mv.xyz;
+        vAura = aAura; vAuraA = aAuraA; vAuraB = aAuraB;
+        gl_Position = projectionMatrix * mv;
+      }`
+  const material = new ShaderMaterial({
+    uniforms: { uArmTime: glowTime },
+    vertexShader: `${AURA_VERTEX_HEAD}\n${ARM_NOISE_GLSL}\n${shape}`,
+    fragmentShader: AURA_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    defines: lite ? { AURA_LITE: '' } : {},
+  })
+  auraMaterials[key] = material
+  return material
+}
+
+/**
+ * Adds the per-instance aura attributes to `geometry` (`count` instances) and returns a
+ * setter: `paint(i, id)` gives instance i arms `id`'s aura. Returns whether it has one.
+ */
+function auraAttributes(geometry, count) {
+  const attr = (name, size) => {
+    const a = new InstancedBufferAttribute(new Float32Array(count * size), size)
+    geometry.setAttribute(name, a)
+    return a
+  }
+  const aAura = attr('aAura', 4)
+  const aA = attr('aAuraA', 3)
+  const aB = attr('aAuraB', 3)
+  return (i, id, size) => {
+    const s = styleOf(id)
+    aAura.setXYZW(i, s.aura[0], s.aura[1], size * (s.aura[2] ?? 1), 0)
+    aA.setXYZ(i, s.auraA.r, s.auraA.g, s.auraA.b)
+    aB.setXYZ(i, s.auraB.r, s.auraB.g, s.auraB.b)
+    aAura.needsUpdate = true
+    aA.needsUpdate = true
+    aB.needsUpdate = true
+    return s.aura[0] > 0
+  }
+}
+
+/** An aura mesh riding on `mesh`: the same geometry and instance matrices, drawn over it. */
+function attachAura(mesh, display) {
+  const aura = new InstancedMesh(mesh.geometry, getAuraMaterial(display), mesh.count)
+  aura.instanceMatrix = mesh.instanceMatrix
+  aura.frustumCulled = false
+  aura.visible = false
+  mesh.add(aura)
+  return aura
+}
+
+// --- Flames, sparks and lava coming off the arms ---------------------------------------
+
+/**
+ * The arms' element, as particles: little camera-facing quads born on the arm's surface
+ * that then move in WORLD space - flames licking straight up (so they keep rising
+ * whichever way you whirl or fly), sparks jumping about, molten drops dripping off,
+ * glitter floating up. Everything is worked out in the vertex shader from the clock and
+ * each quad's seed: nothing is touched per frame on the CPU, one draw call per avatar
+ * (and one for the whole shop). AURA picks the look:
+ *   GLOW, FIRE, TOXIC, VOID, RAINBOW  flames (white-hot core, auraB inside, auraA out)
+ *   THUNDER                           electric sparks: jagged, flickering, jumping about
+ *   LAVA                              glowing drops dripping down, and embers going up
+ *   FROST, GOLD                       twinkling four-point glitter drifting up
+ */
+const PARTICLE_VERTEX = /* glsl */ `
+  attribute vec2 aCorner;
+  attribute vec3 aSeed;
+  attribute vec4 aAura;
+  attribute vec3 aAuraA;
+  attribute vec3 aAuraB;
+  uniform float uArmTime;
+  varying vec2 vUv;
+  varying float vLife;
+  varying vec3 vA;
+  varying vec3 vB;
+  varying float vKind;
+  varying float vStrength;
+  varying float vSeed;
+  #ifdef DISPLAY
+    // The shop's standing pair: a point on one of its two arms (createPairGeometry).
+    vec3 bornAt() {
+      float side = aSeed.x < 0.5 ? -1.0 : 1.0;
+      float along = fract(aSeed.x * 2.0);
+      float ang = aSeed.y * 6.2831;
+      vec3 p = vec3(side * 0.42 + cos(ang) * 0.34, mix(-1.1, 1.15, along), sin(ang) * 0.34);
+      float l = -0.14 * side;
+      return vec3(p.x * cos(l) - p.y * sin(l), p.x * sin(l) + p.y * cos(l), p.z);
+    }
+    const float SCALE = 1.7;
+  #else
+    attribute vec3 aArmPose;
+    // An avatar's rubber arm: a point round it, anywhere from the shoulder to the fist.
+    vec3 bornAt() {
+      float armLen = max(aArmPose.x, 0.05);
+      float along = aSeed.x * 1.2;
+      float ang = aSeed.y * 6.2831;
+      float y = -min(along, 1.0) * armLen - max(0.0, along - 1.0) * 1.2;
+      return vec3(cos(ang) * 0.17, y, sin(ang) * 0.17);
+    }
+    const float SCALE = 1.0;
+  #endif
+  void main() {
+    int k = int(aAura.x + 0.5);
+    float rate = k == 3 ? 2.4 : k == 9 ? 0.5 : (k == 6 || k == 7) ? 0.5 : k == 4 ? 0.8 : 1.3;
+    float life = fract(uArmTime * rate + aSeed.z);
+    vec4 world = modelMatrix * instanceMatrix * vec4(bornAt(), 1.0);
+    float ang = aSeed.y * 6.2831;
+    vec3 off;
+    float size;
+    if (k == 3) {
+      // A spark jumps to a new spot many times a second.
+      float hop = floor(uArmTime * 12.0 + aSeed.z * 7.0);
+      off = vec3(sin(aSeed.z * 91.0 + hop * 1.7), cos(aSeed.y * 57.0 + hop * 2.3), sin(aSeed.x * 33.0 + hop * 3.1)) * 0.1;
+      size = 0.09;
+    } else if (k == 9) {
+      // Lava: most drops drip down and swell; a few embers float up.
+      bool ember = aSeed.z > 0.75;
+      off = vec3(0.0, ember ? life * 0.8 : -life * life * 0.6, 0.0);
+      size = ember ? 0.05 * (1.0 - life) : 0.08 + 0.06 * (1.0 - life);
+    } else if (k == 6 || k == 7) {
+      off = vec3(cos(ang) * 0.08 * life, life * 0.3, sin(ang) * 0.08 * life);
+      size = 0.08;
+    } else {
+      // Flames: up and swaying, shrinking as they burn out.
+      off = vec3(sin(life * 6.0 + aSeed.y * 20.0) * 0.05, life * (k == 4 ? 0.5 : 0.85), cos(life * 5.0 + aSeed.x * 17.0) * 0.05);
+      size = mix(0.26, 0.07, life);
+    }
+    world.xyz += off * SCALE;
+    vec4 mv = viewMatrix * world;
+    float tall = (k == 3 || k == 6 || k == 7 || k == 9) ? 1.0 : 1.7;
+    mv.xy += vec2(aCorner.x, aCorner.y * tall) * size * SCALE * clamp(aAura.z * 1.6, 0.6, 2.0);
+    vUv = aCorner;
+    vLife = life;
+    vA = aAuraA;
+    vB = aAuraB;
+    vKind = aAura.x;
+    vStrength = aAura.y;
+    vSeed = aSeed.z;
+    gl_Position = projectionMatrix * mv;
+  }
+`
+
+const PARTICLE_FRAGMENT = /* glsl */ `
+  uniform float uArmTime;
+  varying vec2 vUv;
+  varying float vLife;
+  varying vec3 vA;
+  varying vec3 vB;
+  varying float vKind;
+  varying float vStrength;
+  varying float vSeed;
+  ${ARM_NOISE_GLSL}
+  void main() {
+    int k = int(vKind + 0.5);
+    vec2 uv = vUv;
+    vec3 col;
+    float a;
+    if (k == 3) {
+      // A jagged electric streak, flickering on and off.
+      float zig = sin(uv.x * 7.0 + vSeed * 40.0) * 0.3 + sin(uv.x * 17.0 + vSeed * 13.0) * 0.12;
+      float line = 1.0 - smoothstep(0.0, 0.09, abs(uv.y - zig));
+      float flick = step(0.4, fract(sin(floor(uArmTime * 20.0) + vSeed * 91.0) * 43758.5));
+      a = line * (1.0 - smoothstep(0.55, 1.0, abs(uv.x))) * flick * 1.4;
+      col = mix(vA, vec3(1.0), line * 0.75);
+    } else if (k == 6 || k == 7) {
+      // Glitter: a twinkling four-point star.
+      float star = max(0.0, 1.0 - (abs(uv.x * uv.y) * 14.0 + length(uv) * 0.85));
+      float twinkle = 0.5 + 0.5 * sin(uArmTime * 8.0 + vSeed * 50.0);
+      a = star * twinkle * (1.0 - vLife) * 1.6;
+      col = mix(vA, vec3(1.0), star);
+    } else if (k == 9) {
+      // A molten drop: white-yellow heart, orange, a dark red rim.
+      float d = length(uv);
+      a = smoothstep(1.0, 0.35, d) * (1.0 - vLife * 0.4);
+      col = mix(vA, vB, smoothstep(0.85, 0.1, d));
+      col = mix(col, vec3(1.0, 0.95, 0.7), smoothstep(0.35, 0.0, d) * 0.7);
+    } else {
+      // A flame tongue: a teardrop, narrower at the top, its edge licked by noise; a
+      // white-hot core, auraB inside, auraA out at the edges and as it burns out.
+      vec2 p = vec2(uv.x * (1.0 + (uv.y + 1.0) * 0.55), uv.y);
+      float n = aNoise(vec2(uv.x * 2.2 + vSeed * 10.0, uv.y * 2.2 - uArmTime * 4.5));
+      float d = length(p) + (n - 0.5) * 0.55;
+      float body = smoothstep(1.0, 0.25, d);
+      float heat = smoothstep(0.75, 0.0, d) * (1.0 - vLife);
+      col = k == 8 ? aHue(fract(vSeed + uArmTime * 0.3 + uv.y * 0.1)) : mix(vA, vB, heat);
+      col = mix(col, vec3(1.0, 0.96, 0.85), smoothstep(0.35, 0.0, d) * (1.0 - vLife) * 0.55);
+      a = body * (1.0 - vLife) * smoothstep(0.0, 0.12, vLife) * (k == 1 ? 0.6 : 1.0);
+    }
+    a = clamp(a * min(vStrength, 1.3), 0.0, 1.0);
+    gl_FragColor = vec4(col * a, a);
+  }
+`
+
+const particleMaterials = {}
+
+function getParticleMaterial(display) {
+  const key = display ? 'display' : 'rubber'
+  if (particleMaterials[key]) return particleMaterials[key]
+  const material = new ShaderMaterial({
+    uniforms: { uArmTime: glowTime },
+    vertexShader: PARTICLE_VERTEX,
+    fragmentShader: PARTICLE_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    defines: display ? { DISPLAY: '' } : {},
+  })
+  particleMaterials[key] = material
+  return material
+}
+
+/** Particles per arm (or per standing pair in the shop), by quality: fewer on LOW. */
+const particleCount = () => (useQuality.getState().level === 'LOW' ? 18 : 48)
+
+/**
+ * A particle mesh riding on `mesh` (an arm or display mesh): `perInstance` quads for each
+ * of its instances, sharing its instance matrices and aura attributes. Its own geometry
+ * (the quads' corners and seeds) is never shared, so it can be disposed with its owner.
+ */
+function attachParticles(mesh, display, perInstance) {
+  const geometry = new BufferGeometry()
+  const corners = new Float32Array(perInstance * 8)
+  const seeds = new Float32Array(perInstance * 12)
+  const index = new Uint16Array(perInstance * 6)
+  const C = [-1, -1, 1, -1, 1, 1, -1, 1]
+  for (let q = 0; q < perInstance; q += 1) {
+    const seed = [(q + 0.5) / perInstance, Math.random(), Math.random()]
+    for (let v = 0; v < 4; v += 1) {
+      corners.set([C[v * 2], C[v * 2 + 1]], (q * 4 + v) * 2)
+      seeds.set(seed, (q * 4 + v) * 3)
+    }
+    index.set([q * 4, q * 4 + 1, q * 4 + 2, q * 4, q * 4 + 2, q * 4 + 3], q * 6)
+  }
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(perInstance * 12), 3))
+  geometry.setAttribute('aCorner', new BufferAttribute(corners, 2))
+  geometry.setAttribute('aSeed', new BufferAttribute(seeds, 3))
+  geometry.setIndex(new BufferAttribute(index, 1))
+  for (const name of ['aAura', 'aAuraA', 'aAuraB', 'aArmPose']) {
+    const attribute = mesh.geometry.getAttribute(name)
+    if (attribute) geometry.setAttribute(name, attribute)
+  }
+  const particles = new InstancedMesh(geometry, getParticleMaterial(display), mesh.count)
+  particles.instanceMatrix = mesh.instanceMatrix
+  particles.frustumCulled = false
+  particles.visible = false
+  particles.userData.ownGeometry = true
+  mesh.add(particles)
+  return particles
+}
+
+/** Frees an arm or display mesh's aura and particle children (their own geometry too). */
+function disposeChildren(mesh) {
+  for (const child of mesh.children) {
+    if (child.userData.ownGeometry) child.geometry.dispose()
+    child.dispose()
+  }
+}
+
+/**
+ * Lighting added to the arms' own glow (the rubber arms' and the shop's): a glossy
+ * highlight from a light up and to the front, and a sheen round the silhouette - strong
+ * on metals and gems, softer on plain colours - so they read as polished, not flat.
+ */
+const ARM_SHINE = /* glsl */ `
+  totalEmissiveRadiance += armPaint.rgb * armPaint.a * 0.8;
+  vec3 shineView = normalize(vViewPosition);
+  float shineSheen = pow(1.0 - abs(dot(normal, shineView)), 3.0);
+  float shineSpec = pow(max(dot(normal, normalize(shineView + vec3(0.35, 0.8, 0.45))), 0.0), 40.0);
+  float shineAmount = vArmStyle.x > 0.5 ? 1.0 : 0.45;
+  totalEmissiveRadiance += ((armPaint.rgb * 0.5 + 0.5) * shineSheen * 0.35 + vec3(shineSpec) * 0.55) * shineAmount;
+`
+
+// --- The shop's standing arms ---------------------------------------------------------
+
+/**
+ * A pair of blocky power arms standing up on end, fists to the sky, leaning a little apart
+ * - the way the shop shows them. Each is a square arm and a chunky fist. Each piece
+ * carries `aArmP` (its position as if the arm hung straight in the avatar rig's units, so
+ * the patterns run along it as on an avatar) and `aCenter` (the piece's middle, which
+ * its aura grows about). About 2.4 units tall; centred.
+ */
+function createPairGeometry() {
   const pieces = []
-  const m = new Matrix4()
   const add = (geometry, alongOffset, matrix) => {
-    const g = geometry.toNonIndexed()
-    geometry.dispose()
+    const g = geometry.index ? geometry.toNonIndexed() : geometry
+    if (g !== geometry) geometry.dispose()
     const pos = g.getAttribute('position')
     const armP = new Float32Array(pos.count * 3)
     for (let i = 0; i < pos.count; i += 1) {
@@ -345,32 +680,27 @@ function createFlexGeometry() {
     }
     g.setAttribute('aArmP', new BufferAttribute(armP, 3))
     g.applyMatrix4(matrix)
+    const c = new Vector3().setFromMatrixPosition(matrix)
+    const center = new Float32Array(pos.count * 3)
+    for (let i = 0; i < pos.count; i += 1) center.set([c.x, c.y, c.z], i * 3)
+    g.setAttribute('aCenter', new BufferAttribute(center, 3))
     pieces.push(g)
   }
-  // A cuff where it would join the shoulder, then the upper arm out to the elbow, lying
-  // along +X.
-  add(new CylinderGeometry(0.46, 0.46, 0.22, 10, 1), 3.95, new Matrix4().makeRotationZ(Math.PI / 2).setPosition(-0.95, -0.75, 0))
-  add(new CylinderGeometry(0.34, 0.38, 1.3, 10, 1), 3.4, m.makeRotationZ(Math.PI / 2).setPosition(-0.25, -0.75, 0))
-  // The bicep's bulge on top of it.
-  add(new SphereGeometry(0.5, 10, 7), 3.5, new Matrix4().makeScale(1.3, 0.95, 0.95).setPosition(-0.3, -0.38, 0))
-  // Elbow.
-  add(new SphereGeometry(0.37, 8, 6), 2.8, new Matrix4().makeTranslation(0.45, -0.72, 0))
-  // Forearm, standing up from the elbow.
-  add(new CylinderGeometry(0.38, 0.31, 1.15, 10, 1), 2.2, new Matrix4().makeTranslation(0.5, -0.12, 0))
-  // The fist: a chunky block, four knuckles along its top edge curled towards the
-  // shoulder, and a thumb folded across them.
-  add(new BoxGeometry(0.82, 0.74, 0.8, 1, 1, 1), 1.6, new Matrix4().makeTranslation(0.5, 0.74, 0))
-  for (let i = 0; i < 4; i += 1) {
-    add(new SphereGeometry(0.14, 6, 4), 1.2, new Matrix4().makeTranslation(0.1, 1.06, -0.3 + i * 0.2))
+  for (const side of [-1, 1]) {
+    const lean = new Matrix4().makeRotationZ(-0.14 * side)
+    const at = (x, y) => new Matrix4().makeTranslation(side * 0.42 + x, y, 0).premultiply(lean)
+    add(armBox(0.6, 1.7, 0.6, 0.14), 3.0, at(0, -0.3))
+    add(armBox(0.74, 0.62, 0.74, 0.16), 1.6, at(0, 0.86))
+    // A thumb on the fist's outer side.
+    add(armBox(0.18, 0.34, 0.22, 0.06), 1.7, at(side * 0.42, 0.78))
   }
-  add(new BoxGeometry(0.24, 0.24, 0.62, 1, 1, 1), 1.3, new Matrix4().makeRotationY(0.2).setPosition(0.05, 0.72, 0.18))
   const merged = mergeGeometries(pieces, false)
   for (const piece of pieces) piece.dispose()
   merged.computeBoundingSphere()
   return merged
 }
 
-let flexGeometry = null
+let pairGeometry = null
 let displayMaterial = null
 
 function getDisplayMaterial() {
@@ -415,21 +745,25 @@ function getDisplayMaterial() {
         vec4 armPaint = armLook(vArmP, vArmStyle.x, vArmA, vArmB, vArmC, vArmStyle.y, uArmTime);
         diffuseColor.rgb = armPaint.rgb;`,
       )
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += armPaint.rgb * armPaint.a * 0.8;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${ARM_SHINE}`)
   }
-  material.customProgramCacheKey = () => 'arm-display-v1'
+  material.customProgramCacheKey = () => 'arm-display-v4'
   displayMaterial = material
   return material
 }
 
+/** How far the shop arms' auras stand off them (share of each piece's size): a thin halo. */
+const DISPLAY_AURA = 0.16
+
 /**
- * Up to `max` floating flexed arms in one draw call. `mesh.setArm(i, id)` dresses
- * instance i as arms `id` (cheap; call once when it changes). The geometry and material
- * are shared by every display mesh; disposeArmDisplayMesh frees only the instance data.
+ * Up to `max` pairs of standing arms in one draw call, their auras in one more.
+ * `mesh.setArm(i, id)` dresses instance i as arms `id` (cheap; call once when it
+ * changes). The shape and materials are shared by every display mesh;
+ * disposeArmDisplayMesh frees only the instance data.
  */
 export function createArmDisplayMesh(max) {
-  flexGeometry ??= createFlexGeometry()
-  const geometry = flexGeometry.clone()
+  pairGeometry ??= createPairGeometry()
+  const geometry = pairGeometry.clone()
   const attr = (name, size) => {
     const a = new InstancedBufferAttribute(new Float32Array(max * size), size)
     geometry.setAttribute(name, a)
@@ -439,14 +773,22 @@ export function createArmDisplayMesh(max) {
   const aB = attr('aArmB', 3)
   const aC = attr('aArmC', 3)
   const aStyle = attr('aArmStyle', 2)
+  const paintAura = auraAttributes(geometry, max)
   const mesh = new InstancedMesh(geometry, getDisplayMaterial(), max)
   mesh.frustumCulled = false
+  const aura = attachAura(mesh, true)
+  // On LOW the shop's halo shells are left out (twice the arms' triangles for 24 pairs);
+  // their own inner glow and the flame particles still show.
+  aura.visible = useQuality.getState().level !== 'LOW'
+  const fire = attachParticles(mesh, true, particleCount())
+  fire.visible = true
   mesh.setArm = (i, id) => {
     const s = styleOf(id)
     aA.setXYZ(i, s.a.r, s.a.g, s.a.b)
     aB.setXYZ(i, s.b.r, s.b.g, s.b.b)
     aC.setXYZ(i, s.c.r, s.c.g, s.c.b)
     aStyle.setXY(i, s.pattern, s.glow)
+    paintAura(i, id, DISPLAY_AURA)
     aA.needsUpdate = true
     aB.needsUpdate = true
     aC.needsUpdate = true
@@ -456,6 +798,7 @@ export function createArmDisplayMesh(max) {
 }
 
 export function disposeArmDisplayMesh(mesh) {
+  disposeChildren(mesh)
   mesh.geometry.dispose()
   mesh.dispose()
 }
@@ -463,19 +806,47 @@ export function disposeArmDisplayMesh(mesh) {
 // --- The avatars' rubber arms -----------------------------------------------------------
 
 /**
- * Rubber arms for an avatar, both in one draw call: each a round, gently tapering rubber
- * tube from a ball at the shoulder down to a cuff at the wrist, ending in a big cartoon
- * hand - palm, four fingers with rounded tips and the thumb on the outside. They replace
- * the avatar's own blocky arms (setArmLook hides those) and are painted as the arms you've
- * equipped, the pattern repeating down the tube however far it stretches.
- *
- * The geometry is one arm in its own frame: the shoulder at the origin, the tube running
- * down to y = -1 and the hand hung below that, palm forward, fingers down. Per instance,
- * `aArmPose` (length in metres, wrist bend, side) is applied in the vertex shader: the
- * tube stretches to the length and thins as it goes, the hand rides on its end without
- * stretching, bent back at the wrist by `bend` (so dragged along the floor it lies flat,
- * palm down, fingers trailing), and only the thumb for that side (+1: +X) is kept.
- * Parts: 0 shoulder ball, 1 tube, 2 hand, 3 the +X thumb, 4 the -X thumb.
+ * One arm's shape, in GLSL, shared by the arm itself and its aura (which passes
+ * `inflate`, the share it stands proud of the arm). The geometry is one arm in its own
+ * frame: the shoulder at the origin, the square arm running down to y = -1 and the fist
+ * hung below that. Per instance, `aArmPose` (length in metres, wrist bend, side) is
+ * applied here: the arm stretches to the length like rubber and thins as it goes, the
+ * fist rides on its end without stretching, bent back at the wrist by `bend`, and only
+ * the thumb for that side (+1: +X) is kept. Parts (`aPart`): 0 shoulder, 1 arm, 2 fist,
+ * 3 the +X thumb, 4 the -X thumb.
+ */
+const ARM_SHAPE_GLSL = /* glsl */ `
+  attribute vec3 aArmP;
+  attribute float aPart;
+  attribute vec3 aArmPose;
+  void armShape(vec3 pos, vec3 nrm, float inflate, out vec3 armPos, out vec3 armN, out vec3 armP) {
+    float armLen = max(aArmPose.x, 0.05);
+    armPos = pos;
+    armN = nrm;
+    armP = aArmP;
+    if (aPart < 0.5) {
+      armPos *= 1.0 + inflate;
+    } else if (aPart < 1.5) {
+      // The arm: stretched to length, thinner the longer, the pattern repeating down it.
+      armPos.xz *= clamp(sqrt(0.63 / armLen), 0.55, 1.15) * (1.0 + inflate);
+      armPos.y *= armLen;
+      armP.y = (aArmP.y - 4.0) * max(1.0, armLen / 0.63) + 4.0;
+    } else {
+      // The fist on the wrist: only this side's thumb, bent back at the wrist.
+      if ((aPart > 2.5 && aPart < 3.5 && aArmPose.z < 0.0) || (aPart > 3.5 && aArmPose.z > 0.0)) armPos = vec3(0.0, -1.0, 0.0);
+      vec3 h = (armPos - vec3(0.0, -1.0, 0.0)) * (1.0 + inflate);
+      float bc = cos(aArmPose.y);
+      float bs = sin(aArmPose.y);
+      h = vec3(h.x, h.y * bc - h.z * bs, h.z * bc + h.y * bs);
+      armN = vec3(armN.x, armN.y * bc - armN.z * bs, armN.z * bc + armN.y * bs);
+      armPos = vec3(0.0, -armLen, 0.0) + h;
+    }
+  }
+`
+
+/**
+ * A blocky power arm: a square shoulder cap, a square arm (in segments, so its aura can
+ * ripple) and a chunky fist with a knuckle ridge and a thumb each side (one kept per arm).
  */
 function createRubberArmGeometry() {
   const pieces = []
@@ -496,22 +867,12 @@ function createRubberArmGeometry() {
     pieces.push(g)
   }
   const m = () => new Matrix4()
-  // Shoulder ball and the tube.
-  add(new SphereGeometry(0.17, 10, 7), 0, m())
-  add(new CylinderGeometry(0.15, 0.12, 1, 12, 1, true), 1, m().makeTranslation(0, -0.5, 0))
-  // The hand: a cuff, the palm, four fingers (the middle two longest) with round tips.
-  add(new CylinderGeometry(0.14, 0.14, 0.07, 10, 1), 2, m().makeTranslation(0, -1.0, 0))
-  add(new BoxGeometry(0.25, 0.22, 0.11), 2, m().makeTranslation(0, -1.13, 0))
-  const lengths = [0.13, 0.16, 0.15, 0.12]
-  for (let i = 0; i < 4; i += 1) {
-    const x = -0.09 + i * 0.06
-    const l = lengths[i]
-    add(new BoxGeometry(0.052, l, 0.085), 2, m().makeTranslation(x, -1.24 - l / 2, 0))
-    add(new SphereGeometry(0.036, 6, 4), 2, m().makeScale(1, 0.8, 1.15).setPosition(x, -1.24 - l, 0))
-  }
-  // The thumbs, one for each side, angled out and down from the palm's edge.
+  add(armBox(0.33, 0.2, 0.33, 0.06), 0, m().makeTranslation(0, -0.04, 0))
+  add(armBox(0.28, 1, 0.28, 0.08), 1, m().makeTranslation(0, -0.5, 0))
+  add(armBox(0.34, 0.3, 0.34, 0.09), 2, m().makeTranslation(0, -1.15, 0))
+  add(armBox(0.36, 0.08, 0.12, 0.03), 2, m().makeTranslation(0, -1.27, 0.12))
   for (const side of [1, -1]) {
-    add(new BoxGeometry(0.065, 0.14, 0.08), side > 0 ? 3 : 4, m().makeRotationZ(-0.65 * side).setPosition(0.15 * side, -1.15, 0.01))
+    add(armBox(0.09, 0.17, 0.11, 0.03), side > 0 ? 3 : 4, m().makeRotationZ(-0.4 * side).setPosition(0.2 * side, -1.12, 0.04))
   }
   const merged = mergeGeometries(pieces, false)
   for (const piece of pieces) piece.dispose()
@@ -519,43 +880,86 @@ function createRubberArmGeometry() {
 }
 
 let rubberArmGeometry = null
+
+// --- Dumbbells in the hands (training on a bench) ---------------------------------------
+
+/**
+ * A dumbbell across the fist: a steel handle and a chunky weight either end, built round
+ * the origin; the material moves it down each arm to its fist (aArmPose.x: the arm's
+ * length, as the rubber arms stretch), so it rides in the hand however the arm is posed.
+ */
+function createDumbbellGeometry() {
+  const pieces = [
+    new CylinderGeometry(0.035, 0.035, 0.46, 8).rotateZ(Math.PI / 2),
+    new CylinderGeometry(0.11, 0.11, 0.12, 12).rotateZ(Math.PI / 2).translate(-0.2, 0, 0),
+    new CylinderGeometry(0.11, 0.11, 0.12, 12).rotateZ(Math.PI / 2).translate(0.2, 0, 0),
+    new CylinderGeometry(0.075, 0.075, 0.14, 12).rotateZ(Math.PI / 2).translate(-0.29, 0, 0),
+    new CylinderGeometry(0.075, 0.075, 0.14, 12).rotateZ(Math.PI / 2).translate(0.29, 0, 0),
+  ].map((g) => g.toNonIndexed())
+  const colors = ['#c9d2de', '#2a2f3a', '#2a2f3a', '#ffd21f', '#ffd21f']
+  for (let i = 0; i < pieces.length; i += 1) {
+    const g = pieces[i]
+    for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name)
+    const c = new Color(colors[i])
+    const n = g.getAttribute('position').count
+    const col = new Float32Array(n * 3)
+    for (let v = 0; v < n; v += 1) col.set([c.r, c.g, c.b], v * 3)
+    g.setAttribute('color', new BufferAttribute(col, 3))
+  }
+  const merged = mergeGeometries(pieces, false)
+  for (const piece of pieces) piece.dispose()
+  return merged
+}
+
+let dumbbellGeometry = null
+let dumbbellMaterial = null
+
+function getDumbbellMaterial() {
+  if (dumbbellMaterial) return dumbbellMaterial
+  const material = new MeshLambertMaterial({ vertexColors: true })
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aArmPose;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= max(aArmPose.x, 0.05) + 0.16;')
+  }
+  material.customProgramCacheKey = () => 'arm-dumbbell-v1'
+  dumbbellMaterial = material
+  return material
+}
+
+/** A pair of dumbbells riding in `mesh`'s (rubber arms') fists; hidden until held. */
+function attachDumbbells(mesh) {
+  dumbbellGeometry ??= createDumbbellGeometry()
+  const geometry = new BufferGeometry()
+  for (const name of ['position', 'normal', 'color']) geometry.setAttribute(name, dumbbellGeometry.getAttribute(name).clone())
+  geometry.setAttribute('aArmPose', mesh.geometry.getAttribute('aArmPose'))
+  const bells = new InstancedMesh(geometry, getDumbbellMaterial(), 2)
+  bells.instanceMatrix = mesh.instanceMatrix
+  bells.frustumCulled = false
+  bells.visible = false
+  bells.userData.ownGeometry = true
+  mesh.add(bells)
+  return bells
+}
 let rubberArmMaterial = null
 
 const RUBBER_VERTEX_HEAD = /* glsl */ `
-  attribute vec3 aArmP;
-  attribute float aPart;
   attribute vec3 aArmA;
   attribute vec3 aArmB;
   attribute vec3 aArmC;
   attribute vec2 aArmStyle;
-  attribute vec3 aArmPose;
   varying vec3 vArmP;
   varying vec3 vArmA;
   varying vec3 vArmB;
   varying vec3 vArmC;
   varying vec2 vArmStyle;
+  ${ARM_SHAPE_GLSL}
 `
 
 const RUBBER_VERTEX_SHAPE = /* glsl */ `
-  float armLen = max(aArmPose.x, 0.05);
-  vec3 armPos = position;
-  vec3 objectNormal = normal;
-  vArmP = aArmP;
-  if (aPart > 0.5 && aPart < 1.5) {
-    // The tube: stretched to length, thinner the longer, the pattern repeating down it.
-    armPos.xz *= clamp(sqrt(0.63 / armLen), 0.5, 1.15);
-    armPos.y *= armLen;
-    vArmP.y = (aArmP.y - 4.0) * max(1.0, armLen / 0.63) + 4.0;
-  } else if (aPart > 1.5) {
-    // The hand on the wrist: only this side's thumb, bent back at the wrist by aArmPose.y.
-    if ((aPart > 2.5 && aPart < 3.5 && aArmPose.z < 0.0) || (aPart > 3.5 && aArmPose.z > 0.0)) armPos = vec3(0.0, -1.0, 0.0);
-    vec3 h = armPos - vec3(0.0, -1.0, 0.0);
-    float bc = cos(aArmPose.y);
-    float bs = sin(aArmPose.y);
-    h = vec3(h.x, h.y * bc - h.z * bs, h.z * bc + h.y * bs);
-    objectNormal = vec3(objectNormal.x, objectNormal.y * bc - objectNormal.z * bs, objectNormal.z * bc + objectNormal.y * bs);
-    armPos = vec3(0.0, -armLen, 0.0) + h;
-  }
+  vec3 armPos;
+  vec3 objectNormal;
+  armShape(position, normal, 0.0, armPos, objectNormal, vArmP);
   vArmA = aArmA;
   vArmB = aArmB;
   vArmC = aArmC;
@@ -589,18 +993,23 @@ function getRubberArmMaterial() {
         vec4 armPaint = armLook(vArmP, vArmStyle.x, vArmA, vArmB, vArmC, vArmStyle.y, uArmTime);
         diffuseColor.rgb = armPaint.rgb;`,
       )
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += armPaint.rgb * armPaint.a * 0.8;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${ARM_SHINE}`)
   }
-  material.customProgramCacheKey = () => 'arm-rubber-v1'
+  material.customProgramCacheKey = () => 'arm-rubber-v4'
   rubberArmMaterial = material
   return material
 }
 
+/** How far an avatar's aura stands off its arms (share of the arm's thickness): a thin halo. */
+const AVATAR_AURA = 0.36
+
 /**
- * One avatar's pair of rubber arms (instance 0 left, 1 right). `setArm(id)` paints both as
- * arms `id` (a no-op when unchanged); `setPose(i, length, bend, side)` shapes one (see
- * createRubberArmGeometry). Placed each frame by avatarRig.placeRubberArms. The arm's
- * shape and the material are shared by every avatar; disposeRubberArms frees the rest.
+ * One avatar's pair of rubber arms (instance 0 left, 1 right) and their glowing aura (a
+ * child mesh sharing the geometry and matrices: one more draw call, none for the starter
+ * arms). `setArm(id)` paints both as arms `id` (a no-op when unchanged); `setPose(i,
+ * length, bend, side)` shapes one (see ARM_SHAPE_GLSL). Placed each frame by
+ * avatarRig.placeRubberArms. The shape and materials are shared by every avatar;
+ * disposeRubberArms frees the rest.
  */
 export function createRubberArms() {
   rubberArmGeometry ??= createRubberArmGeometry()
@@ -615,19 +1024,31 @@ export function createRubberArms() {
   const aC = attr('aArmC', 3)
   const aStyle = attr('aArmStyle', 2)
   const aPose = attr('aArmPose', 3)
+  const paintAura = auraAttributes(geometry, 2)
   const mesh = new InstancedMesh(geometry, getRubberArmMaterial(), 2)
   mesh.frustumCulled = false
+  const aura = attachAura(mesh, false)
+  const fire = attachParticles(mesh, false, particleCount())
+  const bells = attachDumbbells(mesh)
+  /** Holding dumbbells (pressing them on a training bench) or not. */
+  mesh.setHolding = (holding) => {
+    bells.visible = holding
+  }
   let painted = null
   mesh.setArm = (id) => {
     if (id === painted) return
     painted = id
     const s = styleOf(id)
+    let glows = false
     for (let i = 0; i < 2; i += 1) {
       aA.setXYZ(i, s.a.r, s.a.g, s.a.b)
       aB.setXYZ(i, s.b.r, s.b.g, s.b.b)
       aC.setXYZ(i, s.c.r, s.c.g, s.c.b)
       aStyle.setXY(i, s.pattern, s.glow)
+      glows = paintAura(i, id, AVATAR_AURA)
     }
+    aura.visible = glows
+    fire.visible = glows
     aA.needsUpdate = true
     aB.needsUpdate = true
     aC.needsUpdate = true
@@ -641,6 +1062,7 @@ export function createRubberArms() {
 }
 
 export function disposeRubberArms(mesh) {
+  disposeChildren(mesh)
   mesh.geometry.dispose()
   mesh.dispose()
 }

@@ -30,12 +30,14 @@ export const PRESETS = {
      * `remoteAvatars` of them within `remoteAvatarDistance` as their real Boxity avatar
      * (anyone else as the blocky figure). On every preset that's everyone in the room:
      * players want to see each other as themselves, across the whole lobby. A Boxity
-     * avatar is ~100 triangles and one draw call plus one per worn item, so a full room
-     * of 8 typically adds 20-40 draw calls; if a weak device can't keep up, the FPS
-     * monitor lowers the resolution (RENDER_SCALES) rather than taking avatars away.
+     * avatar is ~100 triangles and one draw call plus one per worn item (3-5 each). A
+     * full room is 16 players (15 others): on LOW only the nearest 6 are full avatars
+     * (each 2-6 draw calls with its arms' aura) to stay inside the 80-draw-call mobile
+     * budget, the rest the instanced blocky figure (one draw call for all of them); MEDIUM
+     * shows 10 and HIGH all 15.
      */
     remoteDrawDistance: 150,
-    remoteAvatars: 7,
+    remoteAvatars: 6,
     remoteAvatarDistance: 150,
     remoteNameDistance: 40,
     /** World labels fade out past this. */
@@ -58,7 +60,7 @@ export const PRESETS = {
     cloudCount: 14,
     maxTexture: 1024,
     remoteDrawDistance: 150,
-    remoteAvatars: 7,
+    remoteAvatars: 10,
     remoteAvatarDistance: 150,
     remoteNameDistance: 55,
     labelDistance: 110,
@@ -78,7 +80,7 @@ export const PRESETS = {
     cloudCount: 18,
     maxTexture: 1024,
     remoteDrawDistance: 150,
-    remoteAvatars: 7,
+    remoteAvatars: 15,
     remoteAvatarDistance: 150,
     remoteNameDistance: 70,
     labelDistance: 150,
@@ -115,17 +117,15 @@ function readSaved() {
 }
 
 /**
- * Phones and small CPUs (4 cores or fewer) start on LOW, the safe choice; anything bigger
- * starts on MEDIUM, and the performance monitor drops it to LOW by itself if FPS stays
- * under 45 (`degrade`, auto-picked levels only). A level picked in Settings is
- * remembered on this device and wins over both.
+ * Every device starts on LOW, the safe choice, whatever its hardware. A player who wants
+ * more picks MEDIUM or HIGH in Settings; that choice is remembered on this device and
+ * wins. Below LOW, the performance monitor still lowers the resolution if FPS stays under
+ * 45 (`degrade`).
  */
 export const DEFAULT_LEVEL = 'LOW'
 
 function detectLevel() {
-  if (typeof navigator === 'undefined') return DEFAULT_LEVEL
-  const cores = navigator.hardwareConcurrency || 0
-  return isMobileDevice() || cores <= 4 ? 'LOW' : 'MEDIUM'
+  return DEFAULT_LEVEL
 }
 
 const initialLevel = readSaved() || detectLevel()

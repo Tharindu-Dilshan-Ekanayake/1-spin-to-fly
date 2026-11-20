@@ -29,12 +29,12 @@ const ICONS = {
 }
 
 const BLURBS = {
-  healthX2: 'Double every Power gain, forever',
-  winsX2: 'Double the Wins from every launch, forever',
-  autoRoll: 'Stretches and launches you from the Launch Pad',
+  healthX2: 'Double every Strength gain, forever',
+  winsX2: 'Double the Cash from every launch, forever',
+  autoRoll: 'Spins and launches you from the Spin Bar by itself',
   padVeryOp: 'Unlocks the x40 Diamond Pad',
   padBest: 'Unlocks the x100 Galaxy Pad',
-  sphinx: `Limited: x${formatNumber(PETS.sphinx.mult)} Power pet`,
+  sphinx: `Limited: x${formatNumber(PETS.sphinx.mult)} Strength pet`,
 }
 
 const BLURB_STYLE = { color: '#3a2a10', fontFamily: 'system-ui, sans-serif', fontWeight: 700 }
@@ -105,7 +105,7 @@ function GemsSection() {
           <Card key={sku} icon={<RewardIcon icon={product.icon} size={u(96)} />} name={product.name} blurb={product.blurb}>
             <ChunkyButton gradient={GRADIENTS.blueButton} disabled={busy !== null} onClick={() => purchase(sku)} className="w-full" style={{ height: u(58) }}>
               <span style={{ fontSize: u(30) }}>
-                <StrokeText stroke={u(6)}>{busy === sku ? '...' : 'Buy with Gems'}</StrokeText>
+                <StrokeText stroke={u(6)}>{busy === sku ? '...' : 'Buy'}</StrokeText>
               </span>
             </ChunkyButton>
           </Card>

@@ -3,7 +3,7 @@ import { formatDuration, formatNumber } from '@shared/format'
 /** The four leaderboards, as in the reference: titles, colours and value formatting. */
 export const BOARD_INFO = {
   rebirths: { title: 'Top Rebirths', color: '#c45cff', format: (v) => formatNumber(v) },
-  wins: { title: 'Top Wins', color: '#3fdc4a', format: (v) => formatNumber(v) },
+  wins: { title: 'Top Cash', color: '#3fdc4a', format: (v) => formatNumber(v) },
   distance: { title: 'Longest Flight', color: '#ffb21e', format: (v) => `${formatNumber(v)} m` },
   playtime: { title: 'Top Playtime', color: '#4fc3ff', format: (v) => formatDuration(v * 1000) },
 }

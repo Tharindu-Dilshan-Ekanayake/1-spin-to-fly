@@ -34,21 +34,21 @@ function usePrompt() {
     const world = WORLD_PORTALS[atPortal]
     if (inWorld === 1) return { title: WORLDS[0].name, action: 'Step out and back in to go home', run: null }
     if (unlocked || (rebirths >= world.rebirths && wins >= world.wins)) {
-      return { title: world.name, action: `x${WORLDS[1].wins} Wins on every launch!`, run: null }
+      return { title: world.name, action: `x${WORLDS[1].wins} Cash on every launch!`, run: null }
     }
     if (rebirths < world.rebirths) return { title: world.name, action: `Needs ${world.rebirths} Rebirths (you have ${rebirths})`, run: null }
-    return { title: world.name, action: `Needs ${formatNumber(world.wins)} Wins (you have ${formatNumber(wins)})`, run: null }
+    return { title: world.name, action: `Needs $${formatNumber(world.wins)} (you have $${formatNumber(wins)})`, run: null }
   }
 
   if (atSphinx) {
-    return { title: 'Sphinx - Limited!', action: `Buy - ${formatNumber(SHOP.sphinx.price)} Wins`, run: () => buy('sphinx') }
+    return { title: 'Sphinx - Limited!', action: `Buy - $${formatNumber(SHOP.sphinx.price)}`, run: () => buy('sphinx') }
   }
 
   if (padLocked) {
     const pad = PADS[padNear]
-    const title = `${pad.name} - ${formatNumber(pad.mult)}x Power`
+    const title = `${pad.name} - ${formatNumber(pad.mult)}x Strength`
     if (pad.product) {
-      return { title, action: `Unlock - ${formatNumber(SHOP[pad.product].price)} Wins`, run: () => buy(pad.product) }
+      return { title, action: `Unlock - $${formatNumber(SHOP[pad.product].price)}`, run: () => buy(pad.product) }
     }
     if (pad.world !== undefined && (inWorld || 0) !== pad.world) {
       return { title, action: `Works in ${WORLDS[pad.world].name} only - go through the portal!`, run: null }
@@ -65,12 +65,12 @@ function usePrompt() {
 
   if (stand >= 0) {
     const tire = TIRES[stand]
-    const title = `${tire.name} - +${formatNumber(tire.power)} Power`
+    const title = `${tire.name} - +${formatNumber(tire.power)} Strength`
     const state = standState({ ownedTires: owned, equippedTire: equipped }, stand)
     if (state === 'equipped') return { title, action: 'Equipped', run: null }
     if (state === 'owned') return { title, action: 'Equip', run: () => actions.equipTire(tire.id) }
     if (state === 'locked') return { title, action: `Buy the ${TIRES[stand - 1].name} first`, run: null }
-    return { title, action: `Buy - ${formatNumber(tire.cost)} Wins`, run: () => actions.buyTire(tire.id) }
+    return { title, action: `Buy - $${formatNumber(tire.cost)}`, run: () => actions.buyTire(tire.id) }
   }
   return null
 }

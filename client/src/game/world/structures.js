@@ -1,18 +1,18 @@
 import { CylinderGeometry, SphereGeometry, TorusGeometry } from 'three'
 
 import {
-  COURT_BACK_X,
+  BENCH_HALF,
+  COURT_BACK_DX,
   COURT_HALF,
   PAD_COUNT,
   PAD_HEIGHT,
   PAD_RADIUS,
-  PAD_X,
-  padBarHeight,
+  padCenterX,
   padCenterZ,
   SHOP_SIGN,
   SHOP_SIGN_FACING,
   SHOP_STAGES,
-  TABLE_NEAR_X,
+  TABLE_NEAR_DX,
 } from '@shared/world'
 
 import { STYLE } from '../materials'
@@ -42,8 +42,6 @@ export const PAD_THEMES = [
   { base: '#0b4f8a', top: '#1a8fd8', ring: '#7ff6ff', emblem: '#ffffff', rail: '#0a6fb8', court: '#0b3f72', screen: '#7ff6ff', text: '#7ff6ff', style: STYLE.GLOW, beach: true },
 ]
 
-/** Where each hand grips the bar, either side of the middle. */
-const BAR_GRIP_X = 0.62
 const LINE = '#f4f7fb'
 const LEG = '#3a3f4a'
 const STEEL = '#c9d2de'
@@ -61,7 +59,9 @@ const BALL = new SphereGeometry(1, 12, 8)
  * at the back. Boxes go in `blocks`: no draw calls of their own. (The bar itself stands
  * over the mat: buildPullUpBar.)
  */
-function buildCourt(blocks, z, theme) {
+function buildCourt(blocks, px, z, theme) {
+  const COURT_BACK_X = px + COURT_BACK_DX
+  const TABLE_NEAR_X = px + TABLE_NEAR_DX
   const courtLength = COURT_BACK_X - (TABLE_NEAR_X - 0.4)
   const courtX = (TABLE_NEAR_X - 0.4 + COURT_BACK_X) / 2
   blocks.addOn(courtX, 0, z, courtLength, 0.05, COURT_HALF * 2, theme.court, STYLE.SMOOTH)
@@ -77,6 +77,9 @@ function buildCourt(blocks, z, theme) {
   blocks.addOn(COURT_BACK_X, 0.75, z, 0.26, 0.08, COURT_HALF * 2, theme.ring, STYLE.GLOW)
 }
 
+/** How high the bench's seat is over the mat (the trainee's pose sits on it: playerPose.benchPress). */
+export const SEAT_HEIGHT = 0.45
+
 /** A dumbbell lying along Z at (x, y, z): a steel handle and a weight each end. */
 function addDumbbell(props, x, y, z, color, size = 1) {
   props.add(CYL, { position: [x, y, z], rotation: [Math.PI / 2, 0, 0], scale: [0.05 * size, 0.7 * size, 0.05 * size], color: STEEL })
@@ -86,40 +89,42 @@ function addDumbbell(props, x, y, z, color, size = 1) {
 }
 
 /**
- * The pull-up bar over the mat (the trainee stands at its centre facing east, the bar
- * across in front of their raised hands): two posts in the bar's colour with glowing
- * caps, a steel bar between them at padBarHeight over the mat (higher with every bar) with rubber grips where the hands
- * go, then east of the mat a weights bench with a rack of dumbbells and, behind it, the
- * big backboard the bar's multiplier label (labels/lobbyLabels.js) hangs in front of.
+ * The training station on the mat: a long padded weight bench across it in the pad's
+ * colours, where several players sit side by side (each where they stood: world.js
+ * benchSeatZ) facing east, pressing dumbbells overhead, with a dumbbell rack at each end; then east of the mat a second bench and a rack of
+ * dumbbells and, behind them, the big backboard the pad's multiplier label
+ * (labels/lobbyLabels.js) hangs in front of. The bench is scenery: you walk through it.
  *
- * Everything east of x = TABLE_NEAR_X stays inside the pad's static collider
+ * Everything east of x = px + TABLE_NEAR_DX stays inside the pad's static collider
  * (shared/world.js), so what you can't walk through is what's drawn.
  */
-function buildPullUpBar(blocks, props, z, theme, height) {
+function buildBench(blocks, props, px, z, theme) {
   const top = PAD_HEIGHT
-  const barY = top + height
-  const postZ = 1.35
-  // The frame: a post either side (surfboards on a beach bar), feet, glowing caps.
+  const seat = top + SEAT_HEIGHT
+  const length = BENCH_HALF * 2 + 0.7
+  // A long bench across the mat: steel legs every metre or so, a long padded seat, and a
+  // low backrest behind (west) - low, so the camera behind you still sees you.
+  for (const dz of [-1, -0.34, 0.34, 1]) blocks.addOn(px + 0.05, top, z + dz * (length / 2 - 0.3), 0.5, SEAT_HEIGHT - 0.14, 0.12, LEG, STYLE.SMOOTH)
+  blocks.addOn(px + 0.05, top + 0.1, z, 0.16, 0.08, length - 0.4, STEEL, STYLE.SMOOTH)
+  blocks.addOn(px + 0.05, seat - 0.14, z, 0.66, 0.14, length, theme.rail, STYLE.SMOOTH)
+  blocks.addOn(px + 0.05, seat - 0.03, z, 0.56, 0.04, length - 0.1, theme.top, STYLE.SMOOTH)
+  for (const dz of [-1, 1]) blocks.addOn(px - 0.38, top, z + dz * (length / 2 - 0.3), 0.1, SEAT_HEIGHT + 0.55, 0.1, LEG, STYLE.SMOOTH)
+  blocks.addOn(px - 0.36, seat + 0.05, z, 0.14, 0.5, length - 0.2, theme.rail, STYLE.SMOOTH)
+  blocks.addOn(px - 0.28, seat + 0.1, z, 0.03, 0.4, length - 0.4, theme.ring, STYLE.GLOW)
+  // A dumbbell rack at each end of the bench: a stand with glowing trim, two dumbbells.
   for (const s of [-1, 1]) {
-    const pz = z + s * postZ
-    blocks.addOn(PAD_X, top, pz, 0.9, 0.12, 0.7, LEG, STYLE.SMOOTH)
-    if (theme.beach) {
-      props.add(BALL, { position: [PAD_X, top + (height + 0.4) / 2, pz], scale: [0.36, (height + 0.4) / 2, 0.14], color: theme.rail })
-      props.add(BALL, { position: [PAD_X, top + (height + 0.4) / 2, pz], scale: [0.08, (height + 0.2) / 2, 0.15], color: '#ffffff' })
-    } else {
-      blocks.addOn(PAD_X, top + 0.12, pz, 0.3, height + 0.2, 0.3, theme.rail, STYLE.SMOOTH)
-      blocks.addOn(PAD_X, top + 0.6, pz, 0.34, 0.08, 0.34, theme.ring, STYLE.GLOW)
-    }
-    blocks.addOn(PAD_X, top + height + 0.32, pz, 0.42, 0.16, 0.42, theme.ring, STYLE.GLOW)
+    const rz = z + s * (length / 2 + 0.35)
+    blocks.addOn(px + 0.6, top, rz, 0.4, 0.55, 0.9, '#2a2f3a', STYLE.SMOOTH)
+    blocks.addOn(px + 0.6, top + 0.55, rz, 0.46, 0.05, 0.96, theme.ring, STYLE.GLOW)
+    addDumbbell(props, px + 0.6, top + 0.72, rz - 0.22, theme.top, 0.55)
+    addDumbbell(props, px + 0.6, top + 0.72, rz + 0.22, '#2a2f3a', 0.55)
   }
-  // The bar, and a rubber grip where each hand goes.
-  props.add(CYL, { position: [PAD_X, barY, z], rotation: [Math.PI / 2, 0, 0], scale: [0.065, postZ * 2 + 0.2, 0.065], color: STEEL })
-  for (const s of [-1, 1]) {
-    props.add(CYL, { position: [PAD_X, barY, z + s * BAR_GRIP_X], rotation: [Math.PI / 2, 0, 0], scale: [0.09, 0.34, 0.09], color: theme.screen, style: STYLE.GLOW })
-  }
+}
 
+/** The rest of the station, east of the mat. */
+function buildStationBack(blocks, props, px, z, theme) {
   // East of the mat: a weights bench and a rack of dumbbells, in the bar's colours.
-  const cx = PAD_X + 3.4
+  const cx = px + 3.4
   blocks.addOn(cx - 0.6, 0, z, 1.0, 0.42, 1.9, LEG, STYLE.SMOOTH)
   blocks.addOn(cx - 0.6, 0.42, z, 1.1, 0.16, 2.0, theme.rail, STYLE.SMOOTH)
   blocks.addOn(cx + 0.7, 0, z, 0.7, 1.05, 2.0, '#2a2f3a', STYLE.SMOOTH)
@@ -131,7 +136,7 @@ function buildPullUpBar(blocks, props, z, theme, height) {
   // (west of the mat, looking east) sees it over their head rather than a wall of it: a
   // navy panel in a rail-coloured frame with a glowing border in the bar's ring colour,
   // on two thin posts, a gold dumbbell on top.
-  const bx = PAD_X + 5.6
+  const bx = px + 5.6
   const by = BOARD_BOTTOM
   const bh = BOARD_HEIGHT
   for (const s of [-1, 1]) blocks.addOn(bx, 0, z + s * 1.5, 0.25, by, 0.25, LEG, STYLE.SMOOTH)
@@ -153,25 +158,27 @@ function buildPullUpBar(blocks, props, z, theme, height) {
 }
 
 /**
- * The training spots: round two-tier mats in the bar's colours with a glowing ring round
- * the top, each with its pull-up bar over it and a gym floor beyond. The rounded parts go
+ * The training spots: round two-tier mats in the pad's colours with a glowing ring round
+ * the top, each with its weight bench on it and a gym floor beyond. The rounded parts go
  * into the world's props, the rest into its blocks: no draw calls of their own.
  */
 export function buildPads(blocks, props) {
   for (let i = 0; i < PAD_COUNT; i += 1) {
     const theme = PAD_THEMES[i]
+    const px = padCenterX(i)
     const z = padCenterZ(i)
     const r = PAD_RADIUS
-    props.add(DISC, { position: [PAD_X, PAD_HEIGHT * 0.4, z], scale: [r + 0.45, PAD_HEIGHT * 0.8, r + 0.45], color: theme.base })
-    props.add(DISC, { position: [PAD_X, PAD_HEIGHT - 0.06, z], scale: [r, 0.14, r], color: theme.top, style: theme.style ?? STYLE.STUDS })
-    props.add(RING, { position: [PAD_X, PAD_HEIGHT + 0.02, z], rotation: [Math.PI / 2, 0, 0], scale: [r - 0.25, r - 0.25, 1], color: theme.ring, style: STYLE.GLOW })
+    props.add(DISC, { position: [px, PAD_HEIGHT * 0.4, z], scale: [r + 0.45, PAD_HEIGHT * 0.8, r + 0.45], color: theme.base })
+    props.add(DISC, { position: [px, PAD_HEIGHT - 0.06, z], scale: [r, 0.14, r], color: theme.top, style: theme.style ?? STYLE.STUDS })
+    props.add(RING, { position: [px, PAD_HEIGHT + 0.02, z], rotation: [Math.PI / 2, 0, 0], scale: [r - 0.25, r - 0.25, 1], color: theme.ring, style: STYLE.GLOW })
     // The mat's emblem: a glowing disc either side of where you stand.
     for (const s of [-1, 1]) {
-      props.add(CYL, { position: [PAD_X - 1.9, PAD_HEIGHT + 0.03, z + s * 1.6], scale: [0.46, 0.04, 0.46], color: theme.emblem === '#1d1f22' ? '#ffffff' : theme.emblem })
-      props.add(CYL, { position: [PAD_X - 1.9, PAD_HEIGHT + 0.08, z + s * 1.6], scale: [0.26, 0.04, 0.26], color: theme.ring, style: STYLE.GLOW })
+      props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.03, z + s * 1.6], scale: [0.46, 0.04, 0.46], color: theme.emblem === '#1d1f22' ? '#ffffff' : theme.emblem })
+      props.add(CYL, { position: [px - 1.9, PAD_HEIGHT + 0.08, z + s * 1.6], scale: [0.26, 0.04, 0.26], color: theme.ring, style: STYLE.GLOW })
     }
-    buildPullUpBar(blocks, props, z, theme, padBarHeight(i))
-    buildCourt(blocks, z, theme)
+    buildBench(blocks, props, px, z, theme)
+    buildStationBack(blocks, props, px, z, theme)
+    buildCourt(blocks, px, z, theme)
   }
 }
 

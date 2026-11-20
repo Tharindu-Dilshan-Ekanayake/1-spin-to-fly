@@ -9,6 +9,8 @@ export const u = (n) => `calc(var(--px) * ${n})`
 
 export const GRADIENTS = {
   gold: 'linear-gradient(180deg, #fffaa8 0%, #ffd52a 45%, #ff9c00 100%)',
+  /** Cash amounts: bright banknote green. */
+  cash: 'linear-gradient(180deg, #e6ffb0 0%, #8dff4f 45%, #2fd12f 100%)',
   goldButton: 'linear-gradient(180deg, #fff27a 0%, #ffcb1f 48%, #ff9a0a 100%)',
   blueButton: 'linear-gradient(180deg, #8ff0ff 0%, #2fb8ff 50%, #1677ff 100%)',
   purpleButton: 'linear-gradient(180deg, #ff9cf4 0%, #dc52ff 50%, #9a2bff 100%)',

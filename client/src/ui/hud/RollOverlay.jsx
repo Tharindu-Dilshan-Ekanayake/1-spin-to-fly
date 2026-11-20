@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 
+import { rareThrowById } from '@shared/balance'
 import { formatDistance, formatNumber } from '@shared/format'
 
 import { sfx } from '../../audio/sfx'
@@ -17,10 +18,28 @@ import { GRADIENTS, u } from './style'
  */
 const RAINBOW_BAR = 'linear-gradient(90deg, #ff4a4a 0%, #ff9a1e 17%, #ffe23a 33%, #4be05a 50%, #2fd0ff 67%, #3a6bff 83%, #ff5fd2 100%)'
 const DISTANCE_GRADIENT = 'linear-gradient(180deg, #e0faff 0%, #7fe2ff 45%, #2f8ff2 100%)'
+/** A rare throw's line under the distance: "LUCKY THROW! x2 DISTANCE", in its colours. */
+const RARE_GRADIENTS = {
+  lucky: 'linear-gradient(180deg, #fff6a3 0%, #ffc21f 55%, #ff7a00 100%)',
+  secret: 'linear-gradient(180deg, #f1e2ff 0%, #b07bff 55%, #6a2bff 100%)',
+  mythic: 'linear-gradient(90deg, #ff6a6a 0%, #ffd21f 25%, #7dff4a 45%, #4fd8ff 65%, #a46bff 82%, #ff4fd8 100%)',
+}
+function RareLine({ id, size = 50 }) {
+  const rare = rareThrowById(id)
+  if (!rare) return null
+  return (
+    <span className="pp-tap-fly" style={{ fontSize: u(size), marginTop: u(8) }}>
+      <StrokeText stroke={u(size * 0.2)} gradient={RARE_GRADIENTS[rare.id]}>
+        {rare.label} x{rare.mult} DISTANCE
+      </StrokeText>
+    </span>
+  )
+}
 
 function DistanceCounter() {
   // A callback ref: registered when the element mounts, cleared when it unmounts.
   const ref = useCallback((el) => setRollHudElement(el), [])
+  const rare = useGame((s) => s.roll?.rare || null)
   return (
     // Below the top-right buttons, so the bar never runs under them.
     <div ref={ref} className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: u(96), width: u(1300), maxWidth: '86vw', contain: 'layout style' }}>
@@ -46,11 +65,12 @@ function DistanceCounter() {
         <span data-zone aria-hidden="true" className="pp-text-stroke" style={{ WebkitTextStrokeWidth: u(12) }} />
         <span data-zone data-zone-fill className="pp-text-fill" style={{ WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }} />
       </span>
+      <RareLine id={rare} />
     </div>
   )
 }
 
-/** How many trophies fly to the Wins counter, and where each bursts out to first. */
+/** How many cash stacks fly to the Cash counter, and where each bursts out to first. */
 const FLYERS = Array.from({ length: 12 }, (_, i) => {
   const a = (i / 12) * Math.PI * 2 + 0.3
   const r = 110 + (i % 3) * 45
@@ -58,8 +78,8 @@ const FLYERS = Array.from({ length: 12 }, (_, i) => {
 })
 
 /**
- * The Wins flying home: a ring of trophies bursts out of the result and streams into
- * the Wins counter in the top-left (which bumps as they land - see StatsPanel), with a
+ * The Cash flying home: a ring of cash stacks bursts out of the result and streams into
+ * the Cash counter in the bottom-left (which bumps as they land - see StatsPanel), with a
  * coin ping for each.
  */
 function FlyingTrophies() {
@@ -76,8 +96,8 @@ function FlyingTrophies() {
 }
 
 /**
- * Once the ball stops, as in the reference: "1,516 m!" with "+1,516 Wins" under it, and
- * a big tilted NEW BEST! over them when it's your furthest kick yet.
+ * Once you land: "1,516 m!" with "+$1,516" under it, a big tilted NEW BEST! over them
+ * when it's your furthest flight yet, and the rare throw it was, if it was one.
  */
 function RollResult({ result }) {
   return (
@@ -97,10 +117,15 @@ function RollResult({ result }) {
             {formatDistance(result.distance)}!
           </StrokeText>
         </div>
+        {result.rare && (
+          <div style={{ transform: 'rotate(-6deg)' }}>
+            <RareLine id={result.rare} size={56} />
+          </div>
+        )}
         <div className="flex items-center" style={{ gap: u(12), fontSize: u(84), transform: 'rotate(-6deg)' }}>
           <Icon name="trophy" size={u(110)} />
-          <StrokeText stroke={u(16)} gradient={GRADIENTS.gold}>
-            +{formatNumber(result.wins + result.prize)} Wins
+          <StrokeText stroke={u(16)} gradient={GRADIENTS.cash}>
+            +${formatNumber(result.wins + result.prize)}
           </StrokeText>
         </div>
       </div>

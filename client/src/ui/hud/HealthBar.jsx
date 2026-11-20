@@ -52,7 +52,7 @@ function LevelBar() {
         boxShadow: `0 ${u(5)} 0 #111, inset 0 ${u(-6)} 0 rgba(0,0,0,0.2)`,
       }}
     >
-      {/* Grows by a transform, not its width: the bar fills on every Power gain (twice a
+      {/* Grows by a transform, not its width: the bar fills on every Strength gain (twice a
           second on a treadmill), and an animated width re-laid-out the page every frame. */}
       <div className="absolute inset-0 origin-left transition-transform duration-300 ease-out" style={{ transform: `scaleX(${fill})`, background: BAR_FILL }} />
       <div className="absolute" style={{ left: u(10), right: u(10), top: u(5), height: u(12), borderRadius: u(6), background: 'rgba(255,255,255,0.25)' }} />
@@ -74,7 +74,7 @@ function PackButton({ index, amount, price, afford }) {
     actions.buyPack(index)
   }
   return (
-    <ChunkyButton gradient={PACK_GRADIENTS[index]} onClick={buy} title={`+${formatNumber(amount)} Power`} radius={8} border={5} style={{ width: u(290), height: u(76) }}>
+    <ChunkyButton gradient={PACK_GRADIENTS[index]} onClick={buy} title={`+${formatNumber(amount)} Strength`} radius={8} border={5} style={{ width: u(290), height: u(76) }}>
       <Icon name="heart" size={u(62)} className="absolute" style={{ left: u(10) }} />
       <span className="relative" style={{ fontSize: u(48), marginLeft: u(30) }}>
         <StrokeText stroke={u(10)}>+{formatNumber(amount)}</StrokeText>
@@ -115,7 +115,7 @@ export function HealthBar() {
         </span>
         <span style={{ fontSize: u(36), marginBottom: u(4) }}>
           <StrokeText stroke={u(7)} gradient={BOOST}>
-            {formatMultiplier(boost)} Power Boost
+            {formatMultiplier(boost)} Strength Boost
           </StrokeText>
         </span>
       </div>

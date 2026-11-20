@@ -3,17 +3,20 @@ canDie: false
 hasScore: true
 ---
 
-# +1 Arm Length: Boxity integration
+# +1 Spin to Fly: Boxity integration
 
-The player cannot die: there is no death or game-over screen. You do rubber-arm pull-ups
-for Power, grab the two launch posts on the Launch Pad, walk back with your own controls
-while your arms stretch like rubber, and let go to fly down the rainbow runway: more Power
-flies you further, and the stretch meter (let go at the top of the twang for PERFECT) adds
-up to x1.6 Wins. You always get another launch. Your arms (24 kinds, bought with Wins)
-change how your Bloxity avatar's arms look and how much Power each gain is worth.
+The player cannot die: there is no death or game-over screen. You train Strength on AFK
+training bars, walk under the SPIN BAR at the mouth of the runway, whirl round it while a
+meter's marker runs up and down, and TAP TO FLY: more Strength flies you further, and the
+marker's height (the very top is PERFECT) adds up to x1.5 distance and x1.6 Cash. Now and
+then a launch is a LUCKY (x2), SECRET (x3) or MYTHIC (x5) throw with its own cutscene,
+rolled by the server. You always get another launch. Your arms (24 kinds, bought with
+Cash) change how your Bloxity avatar's arms look and how much Strength each gain is worth.
+Up to 16 players share a room, all able to spin on the long bar side by side. Codes are redeemed in Settings (balance.js `CODES`).
 
 Built on the +1 Tire Rolling template: inside the code the old names stay (`health` is
-Power, a `tire` is a pair of arms, a `pad` is a pull-up bar, a `roll` is a launch).
+Strength, `wins` is Cash, a `tire` is a pair of arms, a `pad` is a training bar, a `roll`
+is a launch).
 
 ## Leaderboards
 
@@ -25,7 +28,7 @@ player leaves, each pod sends the changed scores of its verified players to
 | Board      | Label            | Score                                | Format  |
 |------------|------------------|--------------------------------------|---------|
 | `rebirths` | Rebirths         | `profile.rebirths`                   | number  |
-| `wins`     | Total Wins       | `profile.stats.totalWins`            | compact |
+| `wins`     | Total Cash       | `profile.stats.totalWins`            | compact |
 | `distance` | Longest Flight (m) | `floor(profile.stats.bestDistance)`  | compact |
 | `playtime` | Minutes Played   | `floor(profile.stats.playtime / 60)` | number  |
 
@@ -65,7 +68,7 @@ shows. Body proportions are applied by moving bones, so accessories follow them.
 |-------------------------|---------------------------------------------------------------|
 | `BLOXITY_REPORT_TOKEN`  | Token for leaderboard and room reports (none set = no reports) |
 | `MATCHMAKER_REPORT_URL` | Where the Open Rooms reporter posts (injected by Boxity hosting) |
-| `BLOXITY_GAME_ID`       | Hosted game id for reports (default `1-arm-length`)              |
+| `BLOXITY_GAME_ID`       | Hosted game id for reports (default `1-spin-to-fly`)              |
 | `LEGION_WEBHOOK_SECRET` | Must match the webhook's `x-legion-webhook-secret` header     |
 | `MONGODB_URI`           | Shared database for profiles and Gems grants (SQLite without) |
 | `BLOXITY_API_URL` etc.  | Platform URLs; production defaults (`server/src/bloxityEnv.js`) |

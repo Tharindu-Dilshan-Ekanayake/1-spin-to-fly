@@ -1,12 +1,13 @@
 import { useFrame, useThree } from '@react-three/fiber'
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { Vector3 } from 'three'
 
 import { useQuality } from '../store/quality'
 import { runtime } from './runtime'
-import { LIGHTS } from './sceneStyle'
+import { useGame } from '../store/game'
+import { LIGHTS, WORLD_LIGHTS } from './sceneStyle'
+import { skyUniforms } from './skyState'
 
-const SUN_DIRECTION = new Vector3(...LIGHTS.sunDirection).normalize()
 /** How far back along SUN_DIRECTION the light sits from the point it shadows. */
 const SUN_DISTANCE = 70
 /** Half-size of the square area around the player that receives shadows. */
@@ -27,6 +28,14 @@ export function Lighting() {
   const scene = useThree((s) => s.scene)
   const shadows = useQuality((s) => s.settings.shadows === 'realtime')
   const mapSize = useQuality((s) => s.settings.shadowMapSize) || 1024
+  // Each world's light (Shipwreck Cove: a low sunset sun down the runway); the sky's sun
+  // glow sits where the light comes from.
+  const world = useGame((s) => s.profile.world || 0)
+  const look = WORLD_LIGHTS[world] ?? LIGHTS
+  const sunDirection = useMemo(() => new Vector3(...look.sunDirection).normalize(), [look])
+  useEffect(() => {
+    skyUniforms.sunDirection.value.copy(sunDirection)
+  }, [sunDirection])
 
   useLayoutEffect(() => {
     const sun = sunRef.current
@@ -54,21 +63,21 @@ export function Lighting() {
     const p = runtime.camera.mode === 'roll' ? runtime.flightFocus ?? runtime.player.position : runtime.player.position
     // Snap to whole units so the shadow map doesn't shimmer as the target slides.
     sun.target.position.set(Math.round(p.x), Math.round(p.y), Math.round(p.z))
-    sun.position.copy(sun.target.position).addScaledVector(SUN_DIRECTION, SUN_DISTANCE)
+    sun.position.copy(sun.target.position).addScaledVector(sunDirection, SUN_DISTANCE)
   })
 
   return (
     <>
-      <hemisphereLight args={[LIGHTS.hemiSky, LIGHTS.hemiGround, LIGHTS.hemiIntensity]} />
+      <hemisphereLight args={[look.hemiSky, look.hemiGround, look.hemiIntensity]} />
       <directionalLight
         ref={sunRef}
         castShadow={shadows}
-        color={LIGHTS.sunColor}
-        intensity={LIGHTS.sunIntensity}
-        position={SUN_DIRECTION.clone().multiplyScalar(SUN_DISTANCE).toArray()}
+        color={look.sunColor}
+        intensity={look.sunIntensity}
+        position={[sunDirection.x * SUN_DISTANCE, sunDirection.y * SUN_DISTANCE, sunDirection.z * SUN_DISTANCE]}
         shadow-mapSize={[mapSize, mapSize]}
-        shadow-radius={LIGHTS.shadowSoftness}
-        shadow-intensity={LIGHTS.shadowIntensity}
+        shadow-radius={look.shadowSoftness ?? LIGHTS.shadowSoftness}
+        shadow-intensity={look.shadowIntensity ?? LIGHTS.shadowIntensity}
         shadow-bias={-0.0005}
         shadow-normalBias={0.04}
       />

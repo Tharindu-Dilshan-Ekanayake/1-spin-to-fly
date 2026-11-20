@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 import { TUTORIAL } from '@shared/balance'
-import { EGG_STANDS, groundHeightAt, PAD_RADIUS, PAD_X, padCenterZ, ROLL_ZONE, TIRE_STANDS } from '@shared/world'
+import { EGG_STANDS, groundHeightAt, PAD_RADIUS, padCenterX, padCenterZ, ROLL_ZONE, TIRE_STANDS } from '@shared/world'
 
 import { getGame } from '../../store/game'
 import { createToyInstances, PropBuilder } from '../blocks'
@@ -18,9 +18,9 @@ const ARRIVED = 3.5
 /** Ground point each tutorial step leads to. */
 const TARGETS = {
   roll: { x: 0, z: (ROLL_ZONE.minZ + ROLL_ZONE.maxZ) / 2 },
-  pad0: { x: PAD_X, z: padCenterZ(0), reach: PAD_RADIUS - 0.5 },
+  pad0: { x: padCenterX(0), z: padCenterZ(0), reach: PAD_RADIUS - 0.5 },
   tires: { x: TIRE_STANDS[1].x, z: TIRE_STANDS[1].z },
-  eggs: { x: EGG_STANDS[0].x, z: EGG_STANDS[0].z - 3.5 },
+  eggs: { x: EGG_STANDS[0].x, z: EGG_STANDS[0].z + 3.5 },
 }
 
 const _m = new Matrix4()
